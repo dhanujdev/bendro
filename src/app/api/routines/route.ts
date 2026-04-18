@@ -6,7 +6,7 @@ import {
   GoalSchema,
   IntensitySchema,
 } from "@/types"
-import { MOCK_ROUTINES } from "@/lib/mock-data"
+import { getRoutines, createRoutine } from "@/lib/data"
 
 const ListQuerySchema = z.object({
   goal: GoalSchema.optional(),
@@ -28,19 +28,9 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const { goal, level, isPremium, maxDurationSec, limit, offset } = query.data
-
-  let routines = [...MOCK_ROUTINES]
-  if (goal !== undefined) routines = routines.filter((r) => r.goal === goal)
-  if (level !== undefined) routines = routines.filter((r) => r.level === level)
-  if (isPremium !== undefined)
-    routines = routines.filter((r) => r.isPremium === isPremium)
-  if (maxDurationSec !== undefined)
-    routines = routines.filter((r) => r.totalDurationSec <= maxDurationSec)
-
-  const total = routines.length
-  const page = routines.slice(offset, offset + limit)
-  const validated = z.array(RoutineSchema).parse(page)
+  const { limit, offset } = query.data
+  const { data, total } = await getRoutines(query.data)
+  const validated = z.array(RoutineSchema).parse(data)
 
   return Response.json({ data: validated, total, limit, offset })
 }
@@ -61,15 +51,8 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Mock-mode: fabricate an id and timestamps. In DB-mode this would call
-  // `createRoutine(parsed.data)` from `@/services/routines`.
-  const now = new Date()
-  const routine = RoutineSchema.parse({
-    ...parsed.data,
-    id: crypto.randomUUID(),
-    createdAt: now,
-    updatedAt: now,
-  })
+  const routine = await createRoutine(parsed.data)
+  const validated = RoutineSchema.parse(routine)
 
-  return Response.json({ data: routine }, { status: 201 })
+  return Response.json({ data: validated }, { status: 201 })
 }

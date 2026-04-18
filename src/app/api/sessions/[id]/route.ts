@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { SessionSchema, PainFeedbackSchema } from "@/types"
-import { updateMockSession } from "@/lib/mock-data"
+import { updateSession } from "@/lib/data"
 
 const UpdateSessionBodySchema = z.object({
   durationDoneSec: z.number().int().nonnegative().optional(),
@@ -31,12 +31,7 @@ export async function PATCH(
     )
   }
 
-  const { completed, ...patch } = parsed.data
-
-  const session = updateMockSession(id, {
-    ...patch,
-    ...(completed ? { completedAt: new Date() } : {}),
-  })
+  const session = await updateSession(id, parsed.data)
   if (!session) {
     return Response.json({ error: "Session not found" }, { status: 404 })
   }

@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
-import { MOCK_PROGRESS } from "@/lib/mock-data"
+import { getProgress } from "@/lib/data"
 
 const QuerySchema = z.object({
+  userId: z.string().uuid().optional(),
   days: z.coerce.number().int().positive().max(365).default(30),
 })
 
@@ -36,13 +37,7 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const { days } = query.data
-
-  const progress = {
-    ...MOCK_PROGRESS,
-    history: MOCK_PROGRESS.history.slice(0, days),
-  }
-
+  const progress = await getProgress(query.data)
   const validated = ProgressResponseSchema.parse(progress)
   return Response.json({ data: validated })
 }

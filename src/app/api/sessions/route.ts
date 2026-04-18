@@ -1,5 +1,5 @@
 import { SessionSchema, StartSessionSchema } from "@/types"
-import { createMockSession } from "@/lib/mock-data"
+import { startSession } from "@/lib/data"
 
 export async function POST(request: Request) {
   let body: unknown
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const session = createMockSession(parsed.data)
+  const session = await startSession(parsed.data)
   const validated = SessionSchema.parse(session)
   return Response.json({ data: validated }, { status: 201 })
 }
