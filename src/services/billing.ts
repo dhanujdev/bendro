@@ -319,6 +319,43 @@ function mapStripeStatus(
   }
 }
 
+// ─── Customer Portal ──────────────────────────────────────────────────────────
+
+export interface PortalInput {
+  userId: string
+  /** Where Stripe redirects the user after they close the portal. */
+  returnUrl: string
+}
+
+export interface PortalResult {
+  url: string
+}
+
+/**
+ * Open the Stripe-hosted Customer Portal for a user who already has a
+ * `stripeCustomerId` on file. Rejects with `NO_CUSTOMER` when the user
+ * has never been through checkout — the route translates this to a 409
+ * so the UI can route them to checkout instead.
+ */
+export async function createCustomerPortalSession(
+  input: PortalInput,
+): Promise<PortalResult> {
+  const user = await db.query.users.findFirst({
+    where: eq(users.id, input.userId),
+    columns: { stripeCustomerId: true },
+  })
+  if (!user?.stripeCustomerId) {
+    throw new Error("NO_CUSTOMER")
+  }
+
+  const stripe = getStripe()
+  const session = await stripe.billingPortal.sessions.create({
+    customer: user.stripeCustomerId,
+    return_url: input.returnUrl,
+  })
+  return { url: session.url }
+}
+
 // ─── Cancel (self-service via API; webhook is source of truth) ────────────────
 
 export async function cancelSubscription(userId: string): Promise<void> {

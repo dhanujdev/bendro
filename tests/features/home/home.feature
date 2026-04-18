@@ -48,3 +48,15 @@ Feature: Home dashboard — daily progress + suggested routine
     Then I see the "morning-wake-up-flow" recommended item
     And I see the "desk-worker-relief" recommended item
     And I see the "bedtime-wind-down" recommended item
+
+  # ─── Monetisation CTA (Phase 12) ──────────────────────────────────────────
+  Scenario: Free user sees the Go-Premium upsell
+    Given the user subscriptionStatus is "free"
+    When I open "/home"
+    Then the upgrade CTA is rendered with data-testid "home-upgrade-cta"
+    And its href is "/account?upgrade=1&source=home"
+
+  Scenario: Premium user does not see the Go-Premium upsell
+    Given the user subscriptionStatus is "active"
+    When I open "/home"
+    Then no upgrade CTA with data-testid "home-upgrade-cta" is rendered

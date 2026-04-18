@@ -28,6 +28,7 @@ vi.mock("@/db", () => ({
 const mockStripe = {
   customers: { create: vi.fn() },
   checkout: { sessions: { create: vi.fn() } },
+  billingPortal: { sessions: { create: vi.fn() } },
   webhooks: { constructEvent: vi.fn() },
 };
 vi.mock("stripe", () => {
@@ -44,6 +45,7 @@ import {
   getOrCreateStripeCustomer,
   cancelSubscription,
   createCheckoutSession,
+  createCustomerPortalSession,
   verifyWebhookSignature,
   handleStripeEvent,
   _resetStripeClient,
@@ -259,6 +261,62 @@ describe("createCheckoutSession", () => {
         cancelUrl: "https://x/no",
       }),
     ).rejects.toThrow(/without a URL/);
+  });
+});
+
+describe("createCustomerPortalSession", () => {
+  it("throws NO_CUSTOMER when the user has never been through checkout", async () => {
+    mockDb.query.users.findFirst.mockResolvedValueOnce({
+      stripeCustomerId: null,
+    });
+    await expect(
+      createCustomerPortalSession({
+        userId: "u1",
+        returnUrl: "https://x/account",
+      }),
+    ).rejects.toThrow(/NO_CUSTOMER/);
+    expect(mockStripe.billingPortal.sessions.create).not.toHaveBeenCalled();
+  });
+
+  it("throws NO_CUSTOMER when the user row is missing entirely", async () => {
+    mockDb.query.users.findFirst.mockResolvedValueOnce(null);
+    await expect(
+      createCustomerPortalSession({
+        userId: "u1",
+        returnUrl: "https://x/account",
+      }),
+    ).rejects.toThrow(/NO_CUSTOMER/);
+  });
+
+  it("returns the Stripe portal URL when the customer exists", async () => {
+    mockDb.query.users.findFirst.mockResolvedValueOnce({
+      stripeCustomerId: "cus_abc",
+    });
+    mockStripe.billingPortal.sessions.create.mockResolvedValueOnce({
+      url: "https://billing.stripe.com/p/session/abc",
+    });
+    const res = await createCustomerPortalSession({
+      userId: "u1",
+      returnUrl: "https://x/account",
+    });
+    expect(res.url).toBe("https://billing.stripe.com/p/session/abc");
+    expect(mockStripe.billingPortal.sessions.create).toHaveBeenCalledWith({
+      customer: "cus_abc",
+      return_url: "https://x/account",
+    });
+  });
+
+  it("throws a configuration error when STRIPE_SECRET_KEY is unset", async () => {
+    delete process.env.STRIPE_SECRET_KEY;
+    mockDb.query.users.findFirst.mockResolvedValueOnce({
+      stripeCustomerId: "cus_abc",
+    });
+    await expect(
+      createCustomerPortalSession({
+        userId: "u1",
+        returnUrl: "https://x/account",
+      }),
+    ).rejects.toThrow(/STRIPE_SECRET_KEY is not set/);
   });
 });
 

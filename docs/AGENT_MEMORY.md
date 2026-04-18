@@ -4,16 +4,16 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 11 closeout)
+Last updated: 2026-04-18 (Phase 12 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 11 — Health Safety & Disclaimers** closed on 2026-04-18. See
-`.claude/checkpoints/COMPLETED/phase-11.md`.
+**Phase 12 — Monetisation Polish / Paywall UX** closed on 2026-04-18. See
+`.claude/checkpoints/COMPLETED/phase-12.md`.
 
-Phases 0–11 all closed:
+Phases 0–12 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
@@ -26,13 +26,15 @@ Phases 0–11 all closed:
 - Phase 9 — Billing (Stripe) (`.claude/checkpoints/COMPLETED/phase-9.md`)
 - Phase 10 — Player polish (`.claude/checkpoints/COMPLETED/phase-10.md`)
 - Phase 11 — Health Safety & Disclaimers (`.claude/checkpoints/COMPLETED/phase-11.md`)
+- Phase 12 — Monetisation Polish / Paywall UX (`.claude/checkpoints/COMPLETED/phase-12.md`)
 
-Next phase: **Phase 12 — Monetisation Polish / Paywall UX** (frontend-lead).
-Top backlog items: premium-routine paywall decoration (Phase 9 currently
-hides premium rows for free users — Phase 12 flips to "decorate + show
-upsell"), `/account` billing page with current plan + cancel link, upgrade
-CTA placements, Stripe customer portal deep-link. No schema changes
-expected; `stripe_webhook_events` ledger already in place from Phase 9.
+Next phase: **Phase 13 — Marketing Site & Pricing** (frontend-lead).
+Top backlog items: landing page (`/`) hero + features + social proof,
+`/pricing` page with plan comparison and Stripe Checkout CTA wired to
+`/api/billing/checkout`, FAQ + testimonials, public SEO metadata/OG,
+footer legal links. No schema changes expected; Checkout endpoint
+already in place from Phase 9. After Phase 13: Phase 14 Playwright
+E2E / step bindings, Phase 15 Vercel deploy + observability.
 
 ---
 

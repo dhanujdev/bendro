@@ -1,9 +1,10 @@
 import Link from "next/link"
-import { Play, Clock } from "lucide-react"
+import { Play, Clock, Lock, Sparkles } from "lucide-react"
 import { z } from "zod"
 import { auth } from "@/lib/auth"
 import { GOAL_META } from "@/lib/mock-data"
 import { getRoutines, getUserProfile } from "@/lib/data"
+import { isPremium as isViewerPremium } from "@/services/billing"
 import {
   GoalSchema,
   IntensitySchema,
@@ -54,6 +55,9 @@ export default async function LibraryPage({ searchParams }: PageProps) {
   const profile = session?.user?.id
     ? await getUserProfile(session.user.id)
     : null
+  const viewerIsPremium = session?.user?.id
+    ? await isViewerPremium(session.user.id)
+    : false
 
   const { data, total } = await getRoutines({
     limit: 100,
@@ -111,18 +115,33 @@ export default async function LibraryPage({ searchParams }: PageProps) {
             const meta = GOAL_META[routine.goal]
             const levelColor =
               LEVEL_COLORS[routine.level] ?? "text-white/60 bg-white/10"
+            const locked = routine.isPremium && !viewerIsPremium
+            const href = locked
+              ? `/account?upgrade=1&routine=${routine.slug}`
+              : `/player/${routine.slug}`
             return (
               <Link
                 key={routine.id}
-                href={`/player/${routine.slug}`}
+                href={href}
                 data-testid={`library-routine-${routine.slug}`}
+                data-locked={locked ? "true" : "false"}
+                data-premium={routine.isPremium ? "true" : "false"}
                 className="flex items-center justify-between rounded-xl bg-white/5 border border-white/10 p-4 hover:bg-white/10 hover:border-[#7C5CFC]/40 transition-all group"
               >
                 <div className="flex items-center gap-4">
                   <span className="text-3xl">{meta.emoji}</span>
                   <div>
-                    <p className="font-semibold text-white group-hover:text-[#7C5CFC] transition-colors">
+                    <p className="font-semibold text-white group-hover:text-[#7C5CFC] transition-colors flex items-center gap-2">
                       {routine.title}
+                      {routine.isPremium && (
+                        <span
+                          data-testid={`library-routine-${routine.slug}-premium-badge`}
+                          className="inline-flex items-center gap-1 rounded-full bg-[#7C5CFC]/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#B4A0FF]"
+                        >
+                          <Sparkles className="size-3" />
+                          Premium
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-white/50 mt-0.5 max-w-[240px] line-clamp-1">
                       {routine.description ?? ""}
@@ -143,7 +162,14 @@ export default async function LibraryPage({ searchParams }: PageProps) {
                     </div>
                   </div>
                 </div>
-                <Play className="size-5 text-white/20 group-hover:text-[#7C5CFC] transition-colors shrink-0 ml-2" />
+                {locked ? (
+                  <Lock
+                    data-testid={`library-routine-${routine.slug}-lock`}
+                    className="size-5 text-[#7C5CFC]/60 group-hover:text-[#7C5CFC] transition-colors shrink-0 ml-2"
+                  />
+                ) : (
+                  <Play className="size-5 text-white/20 group-hover:text-[#7C5CFC] transition-colors shrink-0 ml-2" />
+                )}
               </Link>
             )
           })}

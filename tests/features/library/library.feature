@@ -69,3 +69,25 @@ Feature: Library page — browse, search, filter
     When I click "Flexibility" goal chip
     And I click "≤5 min" duration chip
     Then every routine has goal "flexibility" and totalDurationSec ≤ 300
+
+  # ─── Paywall decoration (Phase 12) ─────────────────────────────────────────
+  Scenario: Free user sees premium routines decorated but not hidden
+    Given a free user is signed in
+    And the catalog contains premium routines
+    When I open "/library"
+    Then every premium row has data-locked="true"
+    And every premium row has a "Premium" badge with a Sparkles icon
+    And the row href is "/account?upgrade=1&routine={slug}"
+
+  Scenario: Premium user sees premium routines unlocked
+    Given a premium user is signed in
+    And the catalog contains premium routines
+    When I open "/library"
+    Then every premium row has data-locked="false"
+    And the row href is "/player/{slug}"
+
+  Scenario: Free user clicking a premium row lands on /account with upgrade prompt
+    Given a free user is on "/library"
+    When I click a premium routine row
+    Then the browser navigates to "/account?upgrade=1&routine={slug}"
+    And the upgrade prompt banner is rendered on /account

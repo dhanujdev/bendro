@@ -331,6 +331,64 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /billing/portal:
+    post:
+      tags: [billing]
+      summary: Open the Stripe customer portal
+      description: |
+        Creates a Stripe Billing Portal session for the authenticated user
+        and returns a hosted URL that the client redirects to. The
+        customer is resolved from `users.stripeCustomerId` — the caller
+        cannot supply a `customer` or `userId` in the body. If the user
+        does not have a Stripe customer on file the request returns
+        409 `CONFLICT` so the UI can prompt for checkout instead.
+      operationId: createPortalSession
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                returnUrl:
+                  type: string
+                  format: uri
+                  description: |
+                    Where Stripe sends the user after they close the
+                    portal. Defaults to `${NEXT_PUBLIC_APP_URL}/account`.
+      responses:
+        "200":
+          description: Portal session created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [url]
+                    properties:
+                      url:
+                        type: string
+                        format: uri
+                        description: "Stripe-hosted billing portal URL"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: User has no Stripe customer on file yet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Billing not configured on this environment (STRIPE_SECRET_KEY missing)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /webhooks/stripe:
     post:
       tags: [billing]

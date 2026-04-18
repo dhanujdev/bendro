@@ -1,9 +1,10 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { Play, Flame, Clock, Zap, Camera } from "lucide-react"
+import { Play, Flame, Clock, Zap, Camera, Sparkles } from "lucide-react"
 import { MOCK_ROUTINES, GOAL_META } from "@/lib/mock-data"
 import { auth } from "@/lib/auth"
 import { getProgress } from "@/lib/data"
+import { isPremium as isViewerPremium } from "@/services/billing"
 
 const FEATURED_SLUGS = [
   "morning-wake-up-flow",
@@ -21,6 +22,7 @@ export default async function HomePage() {
     userId: authSession.user.id,
     days: 30,
   })
+  const viewerIsPremium = await isViewerPremium(authSession.user.id)
 
   const featured = FEATURED_SLUGS
     .map((slug) => MOCK_ROUTINES.find((r) => r.slug === slug))
@@ -101,6 +103,31 @@ export default async function HomePage() {
           </p>
         )}
       </section>
+
+      {!viewerIsPremium && (
+        <section className="mb-8">
+          <Link
+            href="/account?upgrade=1&source=home"
+            data-testid="home-upgrade-cta"
+            className="flex items-center justify-between gap-3 rounded-2xl border border-[#7C5CFC]/40 bg-gradient-to-r from-[#7C5CFC]/15 to-[#7C5CFC]/5 px-4 py-3 transition-all hover:from-[#7C5CFC]/20 hover:to-[#7C5CFC]/10 active:scale-[0.98] group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="size-10 rounded-xl bg-[#7C5CFC]/20 flex items-center justify-center">
+                <Sparkles className="size-5 text-[#7C5CFC]" />
+              </div>
+              <div className="text-left">
+                <p className="text-sm font-semibold text-white">Go Premium</p>
+                <p className="text-xs text-white/50">
+                  Unlock the full library and AI-personalised plans
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-medium text-[#7C5CFC] uppercase tracking-wider">
+              Upgrade
+            </span>
+          </Link>
+        </section>
+      )}
 
       <section>
         <h2 className="text-lg font-semibold text-white mb-4">Recommended for you</h2>

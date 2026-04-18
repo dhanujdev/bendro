@@ -1,30 +1,32 @@
 # Active Checkpoint
 
-**Phase 12 — Monetisation Polish / Paywall UX** (frontend-lead).
+**Phase 13 — Marketing Site & Pricing** (frontend-lead).
 
 Scope (subject to refinement):
-- Flip premium-routine gating from "hide entirely" (Phase 9) to
-  "decorate + show upsell" on `/library` and routine cards.
-- `/account` page: current plan, next-renewal date, cancel link.
-  Stripe customer portal deep-link via `services/billing`.
-- Upgrade CTAs: library locked-card click, player start screen when
-  a premium routine is referenced in a shared link, `/home` side
-  slot for free users.
-- Telemetry/event hooks for upgrade clicks (no analytics stack yet —
-  stub a `trackEvent(name, props)` wrapper so it can be wired later).
+- Landing page (`/`) — hero, value prop, 3-4 feature blocks, testimonial
+  placeholder, CTA to /signin and /pricing. Replace the current
+  auto-redirect with a real marketing surface.
+- `/pricing` page — plan comparison (Free vs Premium), FAQ section,
+  Stripe Checkout CTA wired to `POST /api/billing/checkout` with the
+  premium priceId from env.
+- Public shell: `src/app/(marketing)/layout.tsx` with header + footer.
+  Footer with legal links (Terms, Privacy — stub pages if missing).
+- SEO: metadata, OG image, sitemap.ts, robots.ts.
+- No new external deps expected. No schema changes expected.
 
-**No schema changes expected.** Stripe webhook ledger + subscription
-status fields already exist from Phase 9. **No new external deps
-expected.**
+**Defer to Phase 14:** step-binding Playwright across the marketing
+funnel. We ship the static surface + Checkout wiring in Phase 13 and
+wire E2E in Phase 14.
 
 ## Tracked TODOs
 
-- [ ] Render premium badge on library + routine cards.
-- [ ] Locked-card UX that routes to `/account?upgrade=1` (or similar).
-- [ ] `src/app/(app)/account/page.tsx` with current plan + portal link.
-- [ ] `GET /api/billing/portal-link` (or inline into `/account` RSC).
-- [ ] Unit + integration tests.
-- [ ] Close-out: phase-12.md, CHANGELOG, AGENT_MEMORY, commit.
+- [ ] Landing page `/` with hero + features + CTA.
+- [ ] `/pricing` with plan comparison + Checkout button.
+- [ ] `(marketing)` layout with public nav + footer.
+- [ ] SEO: `app/sitemap.ts`, `app/robots.ts`, OG image.
+- [ ] Terms + Privacy stub pages (`/legal/terms`, `/legal/privacy`).
+- [ ] Unit + integration tests (Checkout CTA → Stripe URL).
+- [ ] Close-out: phase-13.md, CHANGELOG, AGENT_MEMORY, commit.
 
-See `.claude/checkpoints/COMPLETED/phase-11.md` for the archived prior phase.
+See `.claude/checkpoints/COMPLETED/phase-12.md` for the archived prior phase.
 See `docs/PHASES.md` for the full phase plan.
