@@ -4,25 +4,27 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 3 closeout)
+Last updated: 2026-04-18 (Phase 4 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 3 — Auth (NextAuth)** closed on 2026-04-18. See
-`.claude/checkpoints/COMPLETED/phase-3.md`.
+**Phase 4 — Player Stability** closed on 2026-04-18. See
+`.claude/checkpoints/COMPLETED/phase-4.md`.
 
-Phases 0–3 all closed:
+Phases 0–4 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
 - Phase 3 — Auth / NextAuth (`.claude/checkpoints/COMPLETED/phase-3.md`)
+- Phase 4 — Player Stability (`.claude/checkpoints/COMPLETED/phase-4.md`)
 
-Next phase: **Phase 4 — Player Stability** (frontend-lead).
-Top backlog items: camera permission flow + error recovery, MediaPipe lazy
-loading behind an error boundary, VRM smoothness / jank budget, Playwright
-smoke test covering the player route without a live camera.
+Next phase: **Phase 5 — DB Toggle Hardening (mock ↔ Neon)** (backend-lead).
+Top backlog items: explicit `DataAdapter` type in `src/lib/data.ts`,
+`pnpm db:generate` → review → `pnpm db:migrate` flow against Neon,
+preview-branch wiring for Vercel previews, integration suite runnable
+against both mock and real Postgres (docker compose for CI).
 
 ---
 

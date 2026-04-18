@@ -13,7 +13,12 @@ export default defineConfig({
       exclude: [
         "src/**/*.test.ts",
         "src/**/*.spec.ts",
-        "src/lib/pose/**",
+        // `angles.ts` is pure math and is covered by tests/unit/pose/.
+        // `vrm-driver.ts` pulls in kalidokit + three + @pixiv/three-vrm,
+        // which only resolve in a browser; it is exercised via the player
+        // route (Phase 14 Playwright). `landmarks.ts` is a constants file.
+        "src/lib/pose/vrm-driver.ts",
+        "src/lib/pose/landmarks.ts",
         "src/lib/disclaimers.ts",
         "src/lib/utils.ts",
         // auth.ts is an Auth.js v5 config surface whose only behavior is

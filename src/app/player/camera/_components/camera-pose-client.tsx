@@ -3,13 +3,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import dynamic from "next/dynamic"
-import { X, Camera, AlertTriangle, Loader2 } from "lucide-react"
+import { X, Camera, AlertTriangle, Loader2, MonitorX } from "lucide-react"
 import type { PoseLandmarker } from "@mediapipe/tasks-vision"
 import { POSE_CONNECTIONS, POSE_LANDMARKS } from "@/lib/pose/landmarks"
 import { angleAtJoint, isReliable, type Landmark } from "@/lib/pose/angles"
 
-type Phase = "idle" | "loading" | "running" | "denied" | "error"
+type Phase =
+  | "idle"
+  | "unsupported"
+  | "loading"
+  | "running"
+  | "denied"
+  | "no_camera"
+  | "error"
 type Mode = "stick" | "avatar"
+
+// Cap pose detection at ~30 Hz. Higher-refresh displays would otherwise run
+// `detectForVideo` at 60/120 Hz, starving the UI thread and producing avatar
+// jank without a matching accuracy gain.
+const TARGET_FPS = 30
+const MIN_DETECT_INTERVAL_MS = 1000 / TARGET_FPS
 
 const WASM_CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm"
 const MODEL_URL =
@@ -33,6 +46,7 @@ export default function CameraPoseClient() {
   const streamRef = useRef<MediaStream | null>(null)
   const rafRef = useRef<number | null>(null)
   const lastVideoTimeRef = useRef<number>(-1)
+  const lastDetectAtRef = useRef<number>(0)
 
   // Shared latest-landmarks ref consumed by <AvatarView /> each frame. Using
   // a ref avoids re-rendering the R3F canvas on every pose detection tick.
@@ -56,10 +70,16 @@ export default function CameraPoseClient() {
     landmarkerRef.current?.close()
     landmarkerRef.current = null
     lastVideoTimeRef.current = -1
+    lastDetectAtRef.current = 0
     landmarksRef.current = { landmarks3D: null, landmarks2D: null }
   }, [])
 
   useEffect(() => {
+    // Detect browser-unsupported state up front so the user sees a distinct
+    // message instead of hitting a raw getUserMedia error on click.
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setPhase("unsupported")
+    }
     return () => teardown()
   }, [teardown])
 
@@ -81,9 +101,16 @@ export default function CameraPoseClient() {
       }
 
       const nowMs = performance.now()
-      // Only run detection when the video has advanced to a new frame.
-      if (video.currentTime !== lastVideoTimeRef.current) {
+      // Two gates on whether to run the pose detector this tick:
+      //   1. Only when the video has advanced to a new frame (no point
+      //      re-detecting the same frame).
+      //   2. At most ~30 Hz regardless of display refresh rate. See
+      //      TARGET_FPS comment at the top of this file for why.
+      const videoAdvanced = video.currentTime !== lastVideoTimeRef.current
+      const sinceLastDetect = nowMs - lastDetectAtRef.current
+      if (videoAdvanced && sinceLastDetect >= MIN_DETECT_INTERVAL_MS) {
         lastVideoTimeRef.current = video.currentTime
+        lastDetectAtRef.current = nowMs
         const result = landmarker.detectForVideo(video, nowMs)
         const landmarks = (result.landmarks?.[0] ?? null) as Landmark[] | null
         const worldLandmarks = (result.worldLandmarks?.[0] ?? null) as Landmark[] | null
@@ -145,12 +172,13 @@ export default function CameraPoseClient() {
   }, [])
 
   const start = useCallback(async () => {
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setPhase("unsupported")
+      return
+    }
     setPhase("loading")
     setErrorMessage(null)
     try {
-      if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-        throw new Error("Camera access requires a secure context (HTTPS or localhost).")
-      }
 
       // Dynamic import keeps MediaPipe out of the initial client bundle.
       const { FilesetResolver, PoseLandmarker } = await import("@mediapipe/tasks-vision")
@@ -181,12 +209,19 @@ export default function CameraPoseClient() {
       startRenderLoop()
     } catch (err) {
       teardown()
-      if (err instanceof DOMException && err.name === "NotAllowedError") {
-        setPhase("denied")
-      } else {
-        setPhase("error")
-        setErrorMessage(err instanceof Error ? err.message : "Unknown error")
+      if (err instanceof DOMException) {
+        // https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia#exceptions
+        if (err.name === "NotAllowedError" || err.name === "SecurityError") {
+          setPhase("denied")
+          return
+        }
+        if (err.name === "NotFoundError" || err.name === "OverconstrainedError") {
+          setPhase("no_camera")
+          return
+        }
       }
+      setPhase("error")
+      setErrorMessage(err instanceof Error ? err.message : "Unknown error")
     }
   }, [startRenderLoop, teardown])
 
@@ -247,7 +282,9 @@ export default function CameraPoseClient() {
 
         {phase === "idle" && <IdleOverlay onStart={start} />}
         {phase === "loading" && <LoadingOverlay />}
+        {phase === "unsupported" && <UnsupportedOverlay />}
         {phase === "denied" && <DeniedOverlay onRetry={start} />}
+        {phase === "no_camera" && <NoCameraOverlay onRetry={start} />}
         {phase === "error" && <ErrorOverlay message={errorMessage} onRetry={start} />}
       </div>
 
@@ -330,6 +367,48 @@ function LoadingOverlay() {
       <Loader2 className="size-8 text-[#7C5CFC] animate-spin mb-4" />
       <p className="text-white/70">Loading pose model…</p>
       <p className="text-white/40 text-xs mt-2">First load may take up to 30 seconds.</p>
+    </div>
+  )
+}
+
+function UnsupportedOverlay() {
+  return (
+    <div className="flex flex-col items-center text-center px-6 max-w-md">
+      <div className="size-14 rounded-full bg-amber-500/15 flex items-center justify-center mb-4">
+        <MonitorX className="size-6 text-amber-400" />
+      </div>
+      <h2 className="text-xl font-bold mb-2">Browser not supported</h2>
+      <p className="text-white/60 text-sm mb-6 leading-relaxed">
+        Your browser doesn&rsquo;t expose camera access to web pages. Camera Mode
+        needs a modern Chrome, Safari, Edge, or Firefox over HTTPS.
+      </p>
+      <Link
+        href="/home"
+        className="rounded-full bg-white/10 hover:bg-white/20 px-5 py-2.5 text-sm font-medium"
+      >
+        Back to home
+      </Link>
+    </div>
+  )
+}
+
+function NoCameraOverlay({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="flex flex-col items-center text-center px-6 max-w-md">
+      <div className="size-14 rounded-full bg-amber-500/15 flex items-center justify-center mb-4">
+        <Camera className="size-6 text-amber-400" />
+      </div>
+      <h2 className="text-xl font-bold mb-2">No camera found</h2>
+      <p className="text-white/60 text-sm mb-6 leading-relaxed">
+        We couldn&rsquo;t find a camera on this device. Connect one (or enable your
+        built-in camera), then retry.
+      </p>
+      <button
+        onClick={onRetry}
+        className="rounded-full bg-white/10 hover:bg-white/20 px-5 py-2.5 text-sm font-medium"
+      >
+        Try again
+      </button>
     </div>
   )
 }
