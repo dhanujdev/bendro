@@ -12,6 +12,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - `.claude/rules/HEALTH_RULES.md` — absolute prohibitions, mandatory disclaimers, pain-feedback flow, pre-existing-condition gating, camera/pose privacy.
 - Foundational docs: `docs/AGENT_MEMORY.md`, `docs/BLOCKERS.md`, `docs/DECISIONS.md`, `docs/EXECUTION_LOG.md`, `docs/PHASES.md`, this `CHANGELOG.md`.
 - `.claude/checkpoints/ACTIVE.md` + `docs/SESSION_HANDOFF.md` workflow for cross-session continuity.
+- **Phase 1 — Test Coverage Baseline:** `@vitest/coverage-v8` reporter wired up with per-service threshold (≥85% lines for `src/services/**`) and global threshold (≥70% lines). `test:coverage` script added. Unit tests added for `billing`, `routines`, `sessions`, `personalization`, and `src/lib/data.ts` adapter (83 tests total, services at 95% line coverage).
 
 ### Changed
 - Python hooks (`contract-guard.py`, `tdd-guard.py`, `pre-pr-gate.py`, `schema-changed.py`, `post-migration.py`) retargeted from `services/api`, `services/orchestrator`, `packages/*` layout to bendro's `src/app/api/**/route.ts`, `src/services/**`, `src/db/**`, Drizzle + pnpm conventions.
