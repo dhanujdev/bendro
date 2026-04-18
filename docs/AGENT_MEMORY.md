@@ -4,16 +4,16 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 13 closeout)
+Last updated: 2026-04-18 (Phase 14 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 13 — Marketing Site & Pricing** closed on 2026-04-18. See
-`.claude/checkpoints/COMPLETED/phase-13.md`.
+**Phase 14 — E2E Coverage / Playwright step bindings** closed on
+2026-04-18. See `.claude/checkpoints/COMPLETED/phase-14.md`.
 
-Phases 0–13 all closed:
+Phases 0–14 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
@@ -28,16 +28,18 @@ Phases 0–13 all closed:
 - Phase 11 — Health Safety & Disclaimers (`.claude/checkpoints/COMPLETED/phase-11.md`)
 - Phase 12 — Monetisation Polish / Paywall UX (`.claude/checkpoints/COMPLETED/phase-12.md`)
 - Phase 13 — Marketing Site & Pricing (`.claude/checkpoints/COMPLETED/phase-13.md`)
+- Phase 14 — E2E Coverage / Playwright step bindings (`.claude/checkpoints/COMPLETED/phase-14.md`)
 
-Next phase: **Phase 14 — E2E Coverage / Playwright step bindings** (qa-lead).
-Backlog built up across Phases 2–13 (step bindings deferred to Phase 14
-on every feature). Scope: install + configure Playwright, build a
-shared fixture that stubs `auth()` and seeds test data, run the
-existing 80+ Gherkin scenarios against a dev server. Primary targets:
-onboarding → home → library → player happy path, pricing → checkout
-redirect, account → portal redirect, camera-mode UX overlays. After
-Phase 14: Phase 15 Vercel deploy + observability + the `pnpm build`
-Auth.js Drizzle-adapter blocker.
+Next phase: **Phase 15 — Vercel deploy + observability + CI e2e** (devops-lead).
+Scope: wire env vars into Vercel preview + prod, stand up Sentry
+(errors) + PostHog (product analytics) behind the existing
+`trackEvent` stub, add a GitHub Actions e2e job that runs `pnpm e2e`
+on PR, and close out the remaining deferred e2e scaffolds (player
+with `getUserMedia` + WebGL stubs, onboarding step bindings,
+signed-in Stripe checkout happy-path with test-mode keys). The
+previously-deferred `pnpm build` Auth.js Drizzle-adapter blocker
+was resolved inside Phase 14 by conditionally attaching the
+adapter only when `DATABASE_URL` is set (JWT fallback otherwise).
 
 ---
 
@@ -55,7 +57,7 @@ Auth.js Drizzle-adapter blocker.
 | Billing | Stripe Checkout + signed webhooks (Phase 9 — ADR-0005) |
 | Pose / Avatar | MediaPipe Tasks Vision → Kalidokit → @pixiv/three-vrm on @react-three/fiber |
 | Validation | Zod at every route boundary |
-| Testing | Vitest (unit/integration); Playwright planned Phase 14 |
+| Testing | Vitest (unit/integration, 307 specs); Playwright (e2e, 16 specs, chromium) — Phase 14 |
 | Deploy | Vercel (preview + prod) — Phase 15 |
 
 ---
@@ -133,6 +135,8 @@ Highlights:
 14. **Onboarding UI is feature-flagged.** `NEXT_PUBLIC_FF_ONBOARDING_V1` defaults true; set to `false` to fall back to `LegacyOnboarding`. Instant-rollback path for the multi-step flow. `filterRoutineCatalog` uses `level === "deep"` as a conservative safety-flag proxy; Phase 11 replaces it with a real caution-tag column on `routines`.
 15. **Stripe SDK only in `src/services/billing.ts`** (ADR-0005). Parallel to the `next-auth`-only-in-`src/lib/auth.ts` rule. `src/config/billing.ts` holds the server-side price allowlist; `createCheckoutSession()` throws `UNKNOWN_PRICE` when the submitted priceId isn't configured. Webhook handler uses the RAW request body (`request.text()`) for HMAC verification — never `.json()` first — and gates duplicate deliveries via `stripe_webhook_events.event_id` with `onConflictDoNothing`. Route `/api/webhooks/stripe` is pinned to `runtime = "nodejs"` + `dynamic = "force-dynamic"`.
 16. **Premium-routine gate is a catalog-level filter, not a paywall.** `GET /api/routines` resolves `isPremium(userId)` from `users.subscriptionStatus` and drops `isPremium=true` rows for viewers not in `{active, trialing}`. Free users and signed-out visitors never see premium rows. Phase 10 can add paywall UX (visible-but-locked) without schema changes by flipping `premiumUnlocked` usage from "filter" to "decorate".
+17. **E2E auth + billing bypass seams in `src/lib/auth.ts` + `src/services/billing.ts`.** Double-gated by `NODE_ENV !== "production"` AND `E2E_AUTH_BYPASS === "1"`. Read cookie-scoped overrides (`e2e_user_id`, `e2e_user_email`, `e2e_user_name`, `e2e_subscription_status`) to simulate signed-in / free / premium viewers without provisioning real OAuth or Stripe state. Physically disabled in production — the env-flag AND node-env check both need to be true for the bypass to run. (Phase 14)
+18. **`DrizzleAdapter` conditionally attached.** `src/lib/auth.ts` now wires `DrizzleAdapter` only when `hasDatabaseUrl()` returns true, falling back to `session: { strategy: "jwt" }` with a `token.sub`-aware session callback. Unblocks `pnpm build` (previously crashed at module load because the `db` Proxy couldn't be introspected without a URL) and `pnpm dev` without `DATABASE_URL`. (Phase 14, resolved the Phase-15 deferred blocker)
 
 ---
 

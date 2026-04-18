@@ -32,6 +32,7 @@ const ID = {
   postWorkout: "22222222-2222-4000-8000-000000000004",
   bedtime: "22222222-2222-4000-8000-000000000005",
   demo: "22222222-2222-4000-8000-000000000006",
+  hipOpenerDeep: "22222222-2222-4000-8000-000000000007",
 } as const
 
 const NOW = new Date("2024-01-01T00:00:00Z")
@@ -261,6 +262,20 @@ export const MOCK_ROUTINES: RoutineType[] = [
     level: "moderate",
     totalDurationSec: 195,
     isPremium: false,
+    isAiGenerated: false,
+    ownerId: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+  },
+  {
+    id: ID.hipOpenerDeep,
+    slug: "hip-opener-deep",
+    title: "Deep Hip Opener",
+    description: "Unlock tight hips with sustained, progressive stretches.",
+    goal: "flexibility",
+    level: "deep",
+    totalDurationSec: 1500,
+    isPremium: true,
     isAiGenerated: false,
     ownerId: null,
     createdAt: NOW,

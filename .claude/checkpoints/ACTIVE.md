@@ -1,39 +1,50 @@
 # Active Checkpoint
 
-**Phase 14 — E2E Coverage / Playwright step bindings** (qa-lead).
+**Phase 15 — Vercel deploy + observability + CI e2e** (devops-lead).
 
 Scope (subject to refinement):
-- Install Playwright + add `pnpm e2e` script.
-- Shared fixture: dev server + stubbed `auth()` (env-flag or adapter
-  swap) + seeded catalog via the mock adapter path.
-- Wire step bindings for the existing Gherkin scenarios accumulated
-  across Phases 2–13 (≈80 scenarios across ~15 .feature files).
-- Primary smoke paths to lock in green:
-  - `/` → signed-out landing → `/pricing` → checkout redirect
-  - `/` → signed-in → `/home` → `/library` → `/player/{slug}`
-  - free → premium paywall decoration → `/account?upgrade=1`
-  - `/account` → `/api/billing/portal` → Stripe portal redirect
-  - onboarding → safety-gate → library is default-gentle
-  - camera-mode: unsupported / denied / no_camera overlays
-- CI: add an e2e job to the workflow (can be Phase 15 if timing is
-  tight, but prefer landing it in Phase 14).
+- Vercel project wiring (preview + prod). Env-var matrix for
+  `DATABASE_URL`, `AUTH_SECRET`, Google OAuth, Resend, Stripe,
+  `STRIPE_PREMIUM_PRICE_ID`, `NEXT_PUBLIC_APP_URL`.
+- Observability from the `trackEvent` stub: Sentry (server + client
+  errors), PostHog (product analytics). Gate behind env flags so
+  local/dev stays noise-free.
+- GitHub Actions CI:
+  - Existing: typecheck, unit tests, build.
+  - New: `pnpm e2e` job running Playwright against a built Next
+    server with `E2E_AUTH_BYPASS=1` + a seeded mock catalog.
+  - Upload Playwright traces/videos on failure.
+- Close out deferred e2e scaffolds from Phase 14:
+  - Player e2e (`/player/demo`) — needs `getUserMedia` stub,
+    WebGL/MediaPipe/VRM loader bypass via a test-only player
+    fixture.
+  - Onboarding e2e step bindings — multi-step form helper.
+  - Signed-in Stripe checkout happy-path — needs Stripe test-mode
+    keys wired into the CI env + a network intercept for the
+    Checkout redirect URL.
 
-**Defer to Phase 15:**
-- Vercel deployment + env-var wiring.
-- `pnpm build` Auth.js Drizzle-adapter "Unsupported database type" fix
-  (blocks production build today). Likely related to `db` being read at
-  build-time static analysis; needs a `db` lazy-init pattern or a
-  build-time env guard.
-- Observability (Sentry / PostHog wiring from the trackEvent stub).
-- Production monitoring + alerting.
+**Already resolved in Phase 14 (was on this phase's list):**
+- `pnpm build` Auth.js Drizzle-adapter "Unsupported database
+  type" blocker. `src/lib/auth.ts` now conditionally attaches
+  `DrizzleAdapter` only when `DATABASE_URL` is set; JWT fallback
+  otherwise. Build succeeds cleanly.
+
+**Defer to Phase 16:**
+- Production monitoring alerts (PagerDuty / Slack hooks).
+- Load / performance testing (k6 or similar).
+- Backup + restore runbook for the Neon database.
 
 ## Tracked TODOs
 
-- [ ] `pnpm add -D @playwright/test`, `pnpm exec playwright install`.
-- [ ] `playwright.config.ts` pointing at `http://localhost:3000`.
-- [ ] Shared fixture for auth stubbing + seeded catalog.
-- [ ] Step definitions for each feature file under `tests/features/**`.
-- [ ] Close-out: phase-14.md, CHANGELOG, AGENT_MEMORY, commit.
+- [ ] Create Vercel project + link to this repo.
+- [ ] Env-var matrix documented in `docs/DEPLOY.md`.
+- [ ] Sentry wiring (`@sentry/nextjs`) behind `SENTRY_DSN`.
+- [ ] PostHog wiring (`posthog-js` + server) behind `POSTHOG_KEY`.
+- [ ] `.github/workflows/ci.yml` — add e2e job with artifact upload.
+- [ ] Player e2e fixture (getUserMedia + WebGL stubs).
+- [ ] Onboarding e2e step bindings.
+- [ ] Signed-in Stripe checkout happy-path (test-mode).
+- [ ] Close-out: phase-15.md, CHANGELOG, AGENT_MEMORY, commit.
 
-See `.claude/checkpoints/COMPLETED/phase-13.md` for the archived prior phase.
+See `.claude/checkpoints/COMPLETED/phase-14.md` for the archived prior phase.
 See `docs/PHASES.md` for the full phase plan.

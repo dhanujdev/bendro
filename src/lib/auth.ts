@@ -1,10 +1,10 @@
 import NextAuth from "next-auth"
-import type { NextAuthConfig } from "next-auth"
+import type { NextAuthConfig, Session } from "next-auth"
 import Google from "next-auth/providers/google"
 import Resend from "next-auth/providers/resend"
 import { DrizzleAdapter } from "@auth/drizzle-adapter"
 
-import { db } from "@/db"
+import { db, hasDatabaseUrl } from "@/db"
 import {
   users,
   accounts,
@@ -47,14 +47,33 @@ function buildProviders(): NextAuthConfig["providers"] {
   return providers
 }
 
+/**
+ * When `DATABASE_URL` is set we wire the Drizzle adapter (prod, staging,
+ * local-with-Postgres). When it isn't (fresh clone, Vercel preview without
+ * DB env, Playwright runs) we fall back to JWT sessions so the app can
+ * still boot. The E2E auth-bypass seam below short-circuits `auth()` in
+ * tests, so the adapter absence is invisible to callers.
+ *
+ * This also unblocks `pnpm build` page-data collection, which previously
+ * threw "Unsupported database type (object)" when DrizzleAdapter inspected
+ * the `db` Proxy at module load.
+ */
+const dbAdapterConfig: Partial<NextAuthConfig> = hasDatabaseUrl()
+  ? {
+      adapter: DrizzleAdapter(db, {
+        usersTable: users,
+        accountsTable: accounts,
+        sessionsTable: authSessions,
+        verificationTokensTable: verificationTokens,
+      }),
+      session: { strategy: "database" },
+    }
+  : {
+      session: { strategy: "jwt" },
+    }
+
 export const authConfig = {
-  adapter: DrizzleAdapter(db, {
-    usersTable: users,
-    accountsTable: accounts,
-    sessionsTable: authSessions,
-    verificationTokensTable: verificationTokens,
-  }),
-  session: { strategy: "database" },
+  ...dbAdapterConfig,
   secret: process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET,
   pages: {
     signIn: "/signin",
@@ -63,15 +82,66 @@ export const authConfig = {
   callbacks: {
     /**
      * Ensure `session.user.id` is the domain `users.id` uuid so API handlers
-     * can use it as the authoritative userId.
+     * can use it as the authoritative userId. With JWT sessions the `user`
+     * arg is undefined; fall back to `token.sub` (Auth.js sets it from the
+     * provider account id during the first sign-in).
      */
-    session({ session, user }) {
-      if (session.user && user?.id) {
-        session.user.id = user.id
+    session({ session, user, token }) {
+      if (session.user) {
+        if (user?.id) {
+          session.user.id = user.id
+        } else if (token?.sub) {
+          session.user.id = token.sub
+        }
       }
       return session
     },
   },
 } satisfies NextAuthConfig
 
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig)
+const nextAuthInstance = NextAuth(authConfig)
+export const { handlers, signIn, signOut } = nextAuthInstance
+const nextAuthAuth = nextAuthInstance.auth
+
+/**
+ * E2E auth bypass seam.
+ *
+ * Playwright tests set cookies `e2e_user_id` / `e2e_user_email` to simulate
+ * signed-in users without touching real OAuth providers. Gated by
+ * `E2E_AUTH_BYPASS=1` AND `NODE_ENV !== "production"` so it is physically
+ * impossible to enable in production even if an env var leaks.
+ *
+ * Returns `null` when the bypass is off or no cookie is set — callers fall
+ * through to the real `nextAuthAuth()`.
+ */
+async function maybeE2eSession(): Promise<Session | null> {
+  if (process.env.NODE_ENV === "production") return null
+  if (process.env.E2E_AUTH_BYPASS !== "1") return null
+
+  const { cookies } = await import("next/headers")
+  const cookieStore = await cookies()
+  const userId = cookieStore.get("e2e_user_id")?.value
+  if (!userId) return null
+
+  const email =
+    cookieStore.get("e2e_user_email")?.value ?? `${userId}@e2e.local`
+  const name = cookieStore.get("e2e_user_name")?.value ?? "E2E User"
+
+  return {
+    user: { id: userId, email, name },
+    expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  } as Session
+}
+
+/**
+ * Auth resolver used by RSCs and route handlers.
+ *
+ * In production and in dev without the E2E flag this is a pass-through to
+ * Auth.js. In Playwright runs with `E2E_AUTH_BYPASS=1` a synthetic session
+ * is returned based on test-set cookies.
+ */
+export async function auth(): Promise<Session | null> {
+  const bypass = await maybeE2eSession()
+  if (bypass) return bypass
+  return nextAuthAuth()
+}

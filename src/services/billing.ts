@@ -55,9 +55,37 @@ export function _resetStripeClient(): void {
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
+/**
+ * E2E test bypass. When `E2E_AUTH_BYPASS=1` (never in production) and a
+ * `e2e_subscription_status` cookie is present, return the cookie value so
+ * Playwright can simulate free / premium viewers without provisioning
+ * a real user row or hitting Stripe. Returns `null` in all other cases
+ * and callers fall through to the DB read.
+ */
+async function maybeE2eSubscriptionStatus(): Promise<SubscriptionStatus | null> {
+  if (process.env.NODE_ENV === "production") return null
+  if (process.env.E2E_AUTH_BYPASS !== "1") return null
+  const { cookies } = await import("next/headers")
+  const cookieStore = await cookies()
+  const raw = cookieStore.get("e2e_subscription_status")?.value
+  if (!raw) return null
+  const allowed: SubscriptionStatus[] = [
+    "free",
+    "active",
+    "trialing",
+    "past_due",
+    "canceled",
+  ]
+  return (allowed as string[]).includes(raw)
+    ? (raw as SubscriptionStatus)
+    : null
+}
+
 export async function getSubscriptionStatus(
   userId: string,
 ): Promise<SubscriptionStatus> {
+  const bypass = await maybeE2eSubscriptionStatus()
+  if (bypass) return bypass
   const user = await db.query.users.findFirst({
     where: eq(users.id, userId),
     columns: { subscriptionStatus: true },

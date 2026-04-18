@@ -6,6 +6,9 @@ export default defineConfig({
     environment: "node",
     globals: true,
     setupFiles: ["./tests/setup.ts"],
+    // Playwright specs live under tests/e2e and must not be picked up by
+    // vitest — they use `@playwright/test`'s runner, not vitest.
+    exclude: ["**/node_modules/**", "**/dist/**", "tests/e2e/**"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "lcov"],
