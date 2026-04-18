@@ -7,6 +7,7 @@ import Link from "next/link"
 import { Play, Pause, SkipForward, SkipBack, X, ChevronRight } from "lucide-react"
 import type { RoutineWithStretches } from "@/types"
 import { decideKeyAction, isTypingTarget, type PlayerPhase } from "@/lib/player/keyboard"
+import { DisclaimerBanner } from "@/components/disclaimer-banner"
 import { StretchCompletionBurst } from "./stretch-completion-burst"
 
 type Phase = PlayerPhase
@@ -160,7 +161,7 @@ export default function PlayerClient({ routine }: { routine: RoutineWithStretche
           <h1 className="text-3xl font-bold text-white mb-2">{routine.title}</h1>
           <p className="text-white/50 mb-8">{routine.description ?? ""}</p>
 
-          <div className="flex flex-col gap-3 mb-10">
+          <div className="flex flex-col gap-3 mb-6">
             {routine.routineStretches.map((rs, i) => (
               <div key={rs.id} className="flex items-center gap-3">
                 <span className="size-6 rounded-full bg-white/10 flex items-center justify-center text-xs text-white/50">
@@ -171,6 +172,8 @@ export default function PlayerClient({ routine }: { routine: RoutineWithStretche
               </div>
             ))}
           </div>
+
+          <DisclaimerBanner surface="routineStart" className="mb-8" />
         </div>
 
         <button

@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import type { GeneratePlanInput, RoutineType, Goal } from "@/types/routine";
 import type { BodyArea } from "@/types/stretch";
+import { sessionHadHighPain } from "./safety";
 
 // ─── Goal → body area mapping ─────────────────────────────────────────────────
 
@@ -168,19 +169,23 @@ export async function generateRoutine(input: GeneratePlanInput) {
 
 // ─── Catalog filter (profile-aware) ──────────────────────────────────────────
 //
-// Phase 6: filter the routine catalog by the user's persisted profile.
+// Phase 6 + Phase 11: filter the routine catalog by the user's persisted
+// profile.
 //
 //   - If `goals` is non-empty, keep only routines whose `goal` is in it. An
 //     empty goals array means "no preference yet" → don't filter by goal.
 //   - If `avoidAreas` is non-empty, drop routines whose `goal` maps (via
-//     GOAL_BODY_AREAS) to ANY avoided area. Phase 11 will tighten this to
-//     a stretch-level caution check; the goal→area map is the right-
-//     coarse-grained proxy until the `routines.cautions` column lands.
-//   - If `safetyFlag` is true, drop routines at `level="deep"`. Also a
-//     temporary proxy — HEALTH_RULES.md calls out caution tags
-//     (`deep-spine`, `high-load`, `prone`) that do not yet exist on the
-//     schema. Phase 11 owns the real caution-tag filter; this rule is the
-//     most conservative default until then.
+//     GOAL_BODY_AREAS) to ANY avoided area. Coarse-grained proxy for a
+//     stretch-level caution check; tightening needs a routines.cautions
+//     column (see Phase-11 checkpoint for the deferred schema work).
+//   - If `safetyFlag` is true, keep ONLY `level === "gentle"` routines.
+//     This literally matches the onboarding safety-gate copy mandated by
+//     HEALTH_RULES.md ("We'll default your library to gentle routines")
+//     and is the most conservative interpretation of §Pre-Existing
+//     Condition Gating until a routines.cautions column exists. Prior
+//     Phase-6 behaviour was "drop level === deep"; Phase 11 tightens to
+//     "keep only gentle" so moderate-intensity routines are ALSO filtered
+//     out for flagged users.
 //
 // Scoring is deliberately NOT done here — this is a filter. Ranking belongs
 // to `suggestRoutinesForUser` and future recommenders.
@@ -209,7 +214,7 @@ export function filterRoutineCatalog<R extends Pick<RoutineType, "goal" | "level
       }
     }
 
-    if (profile.safetyFlag && r.level === "deep") {
+    if (profile.safetyFlag && r.level !== "gentle") {
       return false
     }
 
@@ -217,12 +222,43 @@ export function filterRoutineCatalog<R extends Pick<RoutineType, "goal" | "level
   })
 }
 
+// ─── Pain-history deprioritisation ───────────────────────────────────────────
+//
+// Phase 11 (HEALTH_RULES.md §Pain Feedback Flow): if a user reported a pain
+// rating ≥ 7 on a routine, the routine's sort weight drops so it surfaces
+// lower in future suggestions. This is a soft penalty — the routine is
+// still reachable via the library, matching the rule's "deprioritise, do
+// not hide" wording. A hard hide would interfere with the user's explicit
+// choice to revisit a routine they know caused soreness.
+
+type PainSessionRow = {
+  routineId: string | null
+  painFeedback: Record<string, number> | null | undefined
+}
+
+/**
+ * Returns the set of `routineId`s that recorded a high-tier pain rating
+ * in the supplied session history. Pure and side-effect-free so it can
+ * be unit-tested without the DB.
+ */
+export function routinesWithHighPainHistory(
+  sessions: PainSessionRow[],
+): Set<string> {
+  const ids = new Set<string>()
+  for (const s of sessions) {
+    if (!s.routineId) continue
+    if (sessionHadHighPain(s.painFeedback)) ids.add(s.routineId)
+  }
+  return ids
+}
+
 // ─── Preference-based routine suggestion ─────────────────────────────────────
 
 export async function suggestRoutinesForUser(
   userId: string,
   goals: string[],
-  focusAreas: BodyArea[]
+  focusAreas: BodyArea[],
+  sessionHistory: PainSessionRow[] = [],
 ) {
   const targetAreas = new Set<BodyArea>();
   for (const goal of goals) {
@@ -237,5 +273,16 @@ export async function suggestRoutinesForUser(
 
   // Simple ranking: prefer matching goal
   const ranked = all.filter((r) => goals.includes(r.goal));
-  return ranked.slice(0, 6);
+
+  // Deprioritise routines the user has already reported high pain on.
+  // Stable sort: within the same pain-history bucket, preserve the
+  // createdAt-desc order returned by Drizzle.
+  const penalised = routinesWithHighPainHistory(sessionHistory);
+  const ordered = [...ranked].sort((a, b) => {
+    const aPenalty = penalised.has(a.id) ? 1 : 0;
+    const bPenalty = penalised.has(b.id) ? 1 : 0;
+    return aPenalty - bPenalty;
+  });
+
+  return ordered.slice(0, 6);
 }

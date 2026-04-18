@@ -3,11 +3,12 @@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
-import { ChevronRight, ChevronLeft, AlertTriangle } from "lucide-react"
+import { ChevronRight, ChevronLeft } from "lucide-react"
 import { GOAL_META } from "@/lib/mock-data"
 import { features } from "@/config/features"
 import type { Goal } from "@/types"
 import type { BodyArea } from "@/types/stretch"
+import { DisclaimerBanner } from "@/components/disclaimer-banner"
 
 const GOALS: Goal[] = [
   "flexibility",
@@ -236,14 +237,7 @@ function IntroStep() {
         A few quick questions — goals, focus areas, and anything to avoid — then
         we&apos;ll put together a starting library tailored to you.
       </p>
-      <div
-        className="rounded-xl border border-white/10 bg-white/5 p-4 text-xs text-white/60 leading-relaxed"
-        data-testid="intro-disclaimer"
-      >
-        Bendro provides general flexibility and mobility content. It is not
-        medical advice. Consult a qualified healthcare provider before starting
-        any new exercise program.
-      </div>
+      <DisclaimerBanner surface="onboardingIntro" />
     </div>
   )
 }
@@ -355,18 +349,10 @@ function ConditionsStep({
         })}
       </div>
       {showGate && (
-        <div
-          className="mt-4 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100"
-          role="alert"
-          data-testid="safety-gate"
-        >
-          <AlertTriangle className="size-5 shrink-0 mt-0.5" />
-          <p className="leading-relaxed">
-            Please speak with a healthcare provider before continuing. We&apos;ll
-            default your library to gentle routines. You can adjust this later in
-            settings.
-          </p>
-        </div>
+        <DisclaimerBanner
+          surface="safetyGate"
+          className="mt-4"
+        />
       )}
     </div>
   )

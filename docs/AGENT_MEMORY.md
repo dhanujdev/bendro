@@ -4,16 +4,16 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 10 closeout)
+Last updated: 2026-04-18 (Phase 11 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 10 — Player polish** closed on 2026-04-18. See
-`.claude/checkpoints/COMPLETED/phase-10.md`.
+**Phase 11 — Health Safety & Disclaimers** closed on 2026-04-18. See
+`.claude/checkpoints/COMPLETED/phase-11.md`.
 
-Phases 0–10 all closed:
+Phases 0–11 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
@@ -25,16 +25,14 @@ Phases 0–10 all closed:
 - Phase 8 — Sessions & Streaks Loop (`.claude/checkpoints/COMPLETED/phase-8.md`)
 - Phase 9 — Billing (Stripe) (`.claude/checkpoints/COMPLETED/phase-9.md`)
 - Phase 10 — Player polish (`.claude/checkpoints/COMPLETED/phase-10.md`)
+- Phase 11 — Health Safety & Disclaimers (`.claude/checkpoints/COMPLETED/phase-11.md`)
 
-Next phase: **Phase 11 — Health Safety & Disclaimers** (security-lead, Opus).
-Top backlog items: `src/lib/disclaimers.ts` single-source-of-truth for
-every mandated disclaimer string, disclaimer rendering on onboarding /
-routine start / pain-feedback prompt, pain-feedback-≥7 flow (medical-
-guidance CTA + routine deprioritisation), pre-existing-condition
-safety-flag enforcement in `filterRoutineCatalog`, and a grep audit of
-all user-facing health-adjacent copy. No schema changes expected
-(`preExistingConditions` already exists from Phase 6); no new external
-deps expected.
+Next phase: **Phase 12 — Monetisation Polish / Paywall UX** (frontend-lead).
+Top backlog items: premium-routine paywall decoration (Phase 9 currently
+hides premium rows for free users — Phase 12 flips to "decorate + show
+upsell"), `/account` billing page with current plan + cancel link, upgrade
+CTA placements, Stripe customer portal deep-link. No schema changes
+expected; `stripe_webhook_events` ledger already in place from Phase 9.
 
 ---
 

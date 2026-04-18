@@ -17,6 +17,7 @@ import {
   generateRoutine,
   suggestRoutinesForUser,
   filterRoutineCatalog,
+  routinesWithHighPainHistory,
 } from "@/services/personalization";
 import { db } from "@/db";
 
@@ -203,6 +204,67 @@ describe("suggestRoutinesForUser", () => {
     await suggestRoutinesForUser("u1", ["flexibility"], ["hips"] as any);
     expect(mockDb.query.routines.findMany).toHaveBeenCalledTimes(1);
   });
+
+  it("deprioritises routines with high-pain history behind clean ones", async () => {
+    // r-pain has a history of pain ≥ 7; r-clean does not. Phase 11
+    // deprioritisation should push r-pain to the back of the result
+    // without hiding it entirely (HEALTH_RULES §Pain Feedback Flow).
+    mockDb.query.routines.findMany.mockResolvedValueOnce([
+      { id: "r-pain", goal: "flexibility" },
+      { id: "r-clean", goal: "flexibility" },
+    ]);
+    const result = await suggestRoutinesForUser(
+      "u1",
+      ["flexibility"],
+      [],
+      [
+        { routineId: "r-pain", painFeedback: { s1: 9 } },
+        { routineId: "r-clean", painFeedback: { s1: 2 } },
+      ],
+    );
+    expect(result.map((r) => r.id)).toEqual(["r-clean", "r-pain"]);
+  });
+
+  it("still returns high-pain routines (soft penalty, not a hide)", async () => {
+    mockDb.query.routines.findMany.mockResolvedValueOnce([
+      { id: "r-pain", goal: "flexibility" },
+    ]);
+    const result = await suggestRoutinesForUser(
+      "u1",
+      ["flexibility"],
+      [],
+      [{ routineId: "r-pain", painFeedback: { s1: 10 } }],
+    );
+    expect(result.map((r) => r.id)).toEqual(["r-pain"]);
+  });
+});
+
+describe("routinesWithHighPainHistory", () => {
+  it("returns routine ids with any pain rating ≥ 7", () => {
+    const result = routinesWithHighPainHistory([
+      { routineId: "r1", painFeedback: { s1: 8 } },
+      { routineId: "r2", painFeedback: { s1: 3, s2: 5 } },
+      { routineId: "r3", painFeedback: { s1: 7 } },
+    ]);
+    expect(result).toEqual(new Set(["r1", "r3"]));
+  });
+
+  it("skips rows with a null routineId", () => {
+    const result = routinesWithHighPainHistory([
+      { routineId: null, painFeedback: { s1: 9 } },
+      { routineId: "r1", painFeedback: { s1: 9 } },
+    ]);
+    expect(result).toEqual(new Set(["r1"]));
+  });
+
+  it("treats missing / null painFeedback as 'no high pain'", () => {
+    const result = routinesWithHighPainHistory([
+      { routineId: "r1", painFeedback: null },
+      { routineId: "r2", painFeedback: undefined },
+      { routineId: "r3", painFeedback: {} },
+    ]);
+    expect(result).toEqual(new Set());
+  });
 });
 
 describe("filterRoutineCatalog", () => {
@@ -265,27 +327,34 @@ describe("filterRoutineCatalog", () => {
     expect(ids).not.toContain("r4");
   });
 
-  it("safetyFlag=true drops deep-intensity routines", () => {
+  it("safetyFlag=true keeps ONLY gentle routines (Phase 11 tightening)", () => {
+    // Phase-6 behaviour was "drop level === deep"; Phase 11 tightens to
+    // "keep only gentle" so moderate and deep both disappear for flagged
+    // users — matches the onboarding safety-gate copy promise ("We'll
+    // default your library to gentle routines").
     const result = filterRoutineCatalog(routines, {
       goals: [],
       avoidAreas: [],
       safetyFlag: true,
     });
     const ids = result.map((r) => r.id);
-    expect(ids).not.toContain("r2");
-    expect(ids).not.toContain("r4");
-    expect(ids).toContain("r1");
-    expect(ids).toContain("r3");
+    expect(ids).not.toContain("r2"); // flexibility deep
+    expect(ids).not.toContain("r3"); // recovery moderate
+    expect(ids).not.toContain("r4"); // athletic deep
+    expect(ids).not.toContain("r6"); // posture moderate
+    expect(ids).toContain("r1"); // flexibility gentle
+    expect(ids).toContain("r5"); // stress_relief gentle
+    expect(ids).toContain("r7"); // pain_relief gentle
   });
 
-  it("safetyFlag keeps moderate and gentle routines", () => {
+  it("safetyFlag drops every routine whose level !== 'gentle'", () => {
     const result = filterRoutineCatalog(routines, {
       goals: [],
       avoidAreas: [],
       safetyFlag: true,
     });
     for (const r of result) {
-      expect(r.level).not.toBe("deep");
+      expect(r.level).toBe("gentle");
     }
   });
 
