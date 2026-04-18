@@ -1,269 +1,207 @@
 ---
 name: enterprise-standards-check
 description: >
-  Comprehensive enterprise standards gate. Run before any PR is submitted.
-  Enforces: naming conventions, design patterns, documentation completeness,
-  security invariants, multi-tenancy, test coverage, and code size limits.
-  Outputs a structured PASS/FAIL checklist with file:line references.
+  Comprehensive engineering standards gate for bendro. Run before any PR is
+  submitted. Enforces: TS naming conventions, JSDoc on exported symbols,
+  file/function/component size limits, design patterns (service + data
+  adapter + pose single-boundary), security invariants, user-scoping, test
+  coverage, and OpenAPI contract presence. Outputs a PASS/FAIL checklist.
 ---
 
 # Skill: enterprise-standards-check
 
-Run this skill before submitting ANY pull request. It is a complete gate that
-covers all enterprise engineering standards defined in docs/STANDARDS.md,
-CLAUDE.md, and the ADR set.
+Run this skill before submitting any pull request. It is a complete gate that
+covers all engineering standards defined in `docs/STANDARDS.md`, `CLAUDE.md`,
+and the ADR set.
 
 ## Command
 
 ```bash
-# Run the full standards check
-make standards-check
+pnpm typecheck && pnpm lint && pnpm test
+# plus the manual sections below
 ```
-
-Or manually run each section below.
 
 ---
 
 ## Section 1 — Naming Conventions
 
-### Python
-```bash
-# Check for non-snake_case function/variable names (should be zero violations)
-ruff check services/ packages/ --select N801,N802,N803,N806 --format text
-
-# Check for missing Google-style docstrings on public functions
-ruff check services/ packages/ --select D100,D101,D102,D103 --format text
-```
-
-Expected: **0 violations**
-
-Rules:
-- [ ] Python files: `snake_case.py`
-- [ ] Python classes: `PascalCase`
-- [ ] Pydantic models: `XxxRequest`, `XxxResponse`, `XxxData`
-- [ ] LangGraph states: `XxxState`
-- [ ] LangGraph nodes: verb-phrase `snake_case` (e.g., `ingest_goal`, `validate_output`)
-- [ ] Repository classes: `XxxRepository`
-- [ ] All public functions have Google-style docstrings
-- [ ] All public classes have docstrings
-
 ### TypeScript
 ```bash
-# ESLint naming rules
-pnpm --filter "apps/*" --filter "packages/*" lint
-
-# Check for any type
-grep -rn ": any" apps/ packages/ services/api/src/ --include="*.ts" --include="*.tsx" | grep -v ".d.ts" | grep -v "test" | grep -v "spec"
+# Fail on explicit any (exception: test files and .d.ts)
+grep -rn ": any\b" src/ --include="*.ts" --include="*.tsx" | grep -v ".d.ts" | grep -v "\.test\." | grep -v "\.spec\."
 ```
 
-Expected: **0 `any` types** in non-test files
+Expected: **0 `any` types outside tests**, justified with a `// eslint-disable-next-line` + comment if unavoidable.
 
 Rules:
-- [ ] TypeScript files: `kebab-case.ts`
+- [ ] TS files in `src/lib/`, `src/services/`, `src/config/`: `kebab-case.ts`
 - [ ] React components: `PascalCase.tsx`
-- [ ] Zod schemas: `XxxSchema`
-- [ ] tRPC routers: `XxxRouter`
-- [ ] All public exports have JSDoc comments
-- [ ] Explicit return types on all non-trivial functions
+- [ ] Zod schemas: `XxxSchema` or `xxxSchema` (end in `Schema`)
+- [ ] Hooks: `useXxx`
+- [ ] Drizzle table objects: `lowercasePlural` (`users`, `sessions`, `routines`)
+- [ ] Service modules export functions in `camelCase` with verbs (`createSession`, `listRoutines`)
+- [ ] All exported functions, classes, interfaces, and type aliases have JSDoc
+- [ ] Non-trivial functions have explicit return types
 
 ---
 
 ## Section 2 — Code Size Limits
 
 ```bash
-# Find Python functions over 50 lines
-python3 -c "
-import ast, sys
-from pathlib import Path
-for f in Path('services').rglob('*.py'):
-    try:
-        tree = ast.parse(f.read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                end = getattr(node, 'end_lineno', node.lineno + 50)
-                if end - node.lineno > 50:
-                    print(f'{f}:{node.lineno} — function \"{node.name}\" is {end - node.lineno} lines (limit: 50)')
-    except:
-        pass
-"
+# Files over 300 lines
+find src/ -type f \( -name "*.ts" -o -name "*.tsx" \) | xargs wc -l | awk '$1 > 300 {print $0}' | sort -rn | head -20
 
-# Find files over 300 lines
-find services/ packages/ apps/ -name "*.py" -o -name "*.ts" -o -name "*.tsx" | xargs wc -l 2>/dev/null | awk '$1 > 300 {print $0}' | sort -rn | head -20
+# React components over 200 lines
+find src/ -type f -name "*.tsx" | xargs wc -l | awk '$1 > 200 {print $0}' | sort -rn | head -20
 ```
 
-Expected: **0 functions over 50 lines**, **0 files over 300 lines**
+Expected:
+- [ ] 0 functions over 50 lines
+- [ ] 0 files over 300 lines
+- [ ] 0 components over 200 lines
+
+If a file is over, split it: components into sub-components under `_components/`, services into cohesive sibling modules, libs into folders.
 
 ---
 
 ## Section 3 — Design Pattern Enforcement
 
-### Repository Pattern
+### Service Layer (Business Logic Only in src/services/*)
 ```bash
-# Ensure no raw ORM/SQL calls outside repositories/
-grep -rn "db\.execute\|AsyncSession\|select(\|Session(" services/api/src/routes/ services/api/src/services/ --include="*.py" | grep -v "test" | grep -v "# OK:"
+# Route handlers must not import drizzle or db
+grep -rn "from 'drizzle-orm'\|from '@/db'\|from '../db'" src/app/ --include="*.ts" --include="*.tsx"
 ```
-
-Expected: **0 raw DB calls in routes or services** (only allowed in `repositories/`)
+Expected: **0 matches** (route handlers delegate to services).
 
 ```bash
-# Check all repository classes extend or follow the pattern
-grep -rn "class.*Repository" services/ packages/ --include="*.py"
+# Business logic must not live in React components
+grep -rn "from '@/db'" src/components/ src/app/ --include="*.tsx"
 ```
+Expected: **0 matches**.
 
-- [ ] Every DB access class is named `XxxRepository`
-- [ ] Repository classes use `sqlalchemy.text()` with named parameters only
-- [ ] No string concatenation in SQL queries
-
-### Adapter Pattern
+### Data Adapter Boundary
 ```bash
-# Check all external service adapters implement a Protocol
-grep -rn "class.*Adapter" services/orchestrator/src/providers/ --include="*.py"
-grep -rn "Protocol" services/orchestrator/src/providers/interfaces.py
+# No env branching in callers — only src/lib/data.ts decides mock vs DB
+grep -rn "process.env.DATABASE_URL" src/ --include="*.ts" --include="*.tsx" | grep -v "src/lib/data.ts\|src/config/env.ts\|src/db/"
 ```
+Expected: **0 matches outside src/lib/data.ts, src/config/env.ts, src/db/**.
 
-- [ ] `AnthropicAdapter` implements `LlmAdapter` Protocol
-- [ ] `MinioAdapter` (Phase 4+) implements `StorageAdapter` Protocol
-- [ ] No direct `anthropic.` SDK calls outside `anthropic_adapter.py`
-- [ ] No direct `openai.` SDK calls outside `openai_adapter.py` (Phase 15+)
-
-### Architecture Invariants
+### Pose Single Boundary
 ```bash
-# LangGraph only in orchestrator
-grep -rn "langgraph\|StateGraph\|LangGraph" services/api/ apps/ packages/ --include="*.py" --include="*.ts"
-
-# Policy engine only in packages/policy-engine
-grep -rn "PolicyResolver\|policy_engine" services/api/src/routes/ services/orchestrator/src/nodes/ --include="*.py" | grep -v "from packages"
-
-# Audit events only via observability package
-grep -rn "audit_events.*INSERT\|INSERT.*audit_events" services/ --include="*.py" | grep -v "AuditEventRepository\|test_"
+# MediaPipe / Kalidokit / VRM only in src/lib/pose/** or src/app/player/camera/_components/**
+grep -rn "@mediapipe/\|kalidokit\|@pixiv/three-vrm" src/ --include="*.ts" --include="*.tsx" | \
+  grep -v "src/lib/pose/\|src/app/player/camera/_components/"
 ```
+Expected: **0 matches outside allowed paths**.
 
-Expected for all three: **0 violations**
+### Stripe Single Boundary (when Phase 9 lands)
+```bash
+grep -rn "from 'stripe'" src/ --include="*.ts" | grep -v "src/services/billing.ts"
+```
+Expected: **0 matches outside src/services/billing.ts**.
+
+### Env Reads
+```bash
+# process.env reads only in src/config/env.ts
+grep -rn "process\.env\." src/ --include="*.ts" --include="*.tsx" | grep -v "src/config/env.ts"
+```
+Expected: near-zero — exceptions require a justifying comment.
 
 ---
 
 ## Section 4 — Security Invariants
 
 ```bash
-# workspace_id filter on all user-data queries
-python3 scripts/check_workspace_id.py  # see scripts/ for implementation
-
-# No hardcoded secrets
-detect-secrets scan --baseline .secrets.baseline
-
-# No PII in logs
-grep -rn "logger.*email\|logger.*password\|logger.*token\|structlog.*email" services/ --include="*.py" | grep -v "test_\|# OK:"
-
-# All auth endpoints require JWT (check EXCLUDED_PATHS completeness)
-grep -n "EXCLUDED_PATHS" services/api/src/middleware/auth.py
+# userId must come from the session, not the request body
+grep -rn "body\.userId\|query\.userId\|params\.userId" src/app/api/ --include="*.ts"
 ```
-
-- [ ] Every query on tenant-scoped tables includes `workspace_id` filter
-- [ ] No passwords, emails, tokens in log statements
-- [ ] No hardcoded credentials (detect-secrets passes)
-- [ ] CORS origins not wildcarded in production config
+Expected: **0 matches**.
 
 ```bash
-# SAST scan
-bandit -r services/orchestrator/src services/api/src -ll --format text
-semgrep --config=auto --error services/ packages/ --quiet
+# No logging of secrets / PII
+grep -rn "console\.\(log\|info\|warn\|error\).*\(email\|password\|token\|stripeCustomerId\|sessionCookie\)" src/ --include="*.ts" --include="*.tsx"
 ```
+Expected: **0 matches**.
 
-Expected: **0 HIGH or CRITICAL findings**
+```bash
+# No sql.raw with user input — Drizzle parameterized queries only
+grep -rn "sql\.raw(" src/ --include="*.ts"
+```
+Expected: **0 matches**, or each occurrence is allowlist-validated with a comment explaining why.
+
+- [ ] Every query on user-scoped tables filters by `userId` from the NextAuth session
+- [ ] No passwords, emails, tokens, Stripe IDs, or session cookies in log statements
+- [ ] No hardcoded credentials — `detect-secrets scan` passes
+- [ ] Stripe webhook handlers verify signature (Phase 9+)
+- [ ] CORS is same-origin by default; no wildcard anywhere
 
 ---
 
 ## Section 5 — Documentation Completeness
 
 ```bash
-# Python public functions without docstrings
-python3 -c "
-import ast
-from pathlib import Path
-for f in Path('services').rglob('*.py'):
-    if 'test_' in f.name or '__pycache__' in str(f):
-        continue
-    try:
-        tree = ast.parse(f.read_text())
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                if not (ast.get_docstring(node)):
-                    if not node.name.startswith('_'):
-                        print(f'{f}:{node.lineno} — public function \"{node.name}\" missing docstring')
-    except:
-        pass
-"
-
-# TypeScript public exports without JSDoc
-grep -rn "^export " apps/ packages/ --include="*.ts" --include="*.tsx" | grep -v "//" | grep -v "test\|spec" | head -20
+# TS public exports without JSDoc (heuristic — spot check top matches)
+grep -rn "^export " src/ --include="*.ts" --include="*.tsx" | grep -v "\.test\.\|\.spec\." | head -30
 ```
 
-- [ ] All public Python functions have Google-style docstrings
-- [ ] All TypeScript public exports have JSDoc comments
-- [ ] CHANGELOG.md ## [Unreleased] section updated
-- [ ] Architecture diagrams updated if service boundaries changed
+- [ ] Every exported function, class, interface, and type in `src/` has JSDoc
+- [ ] Complex components have a top-of-file JSDoc explaining purpose + props
+- [ ] Inline comments explain WHY for any non-obvious logic
+- [ ] CHANGELOG.md ## [Unreleased] is updated
+- [ ] docs/architecture/ diagrams updated if module boundaries changed
 
 ---
 
 ## Section 6 — Test Coverage
 
 ```bash
-# Python coverage
-pytest services/ --cov=services --cov-report=term-missing --cov-fail-under=85 -q
+# Vitest with coverage (configure in vite.config.ts / vitest.config.ts)
+pnpm test -- --coverage
 
-# TypeScript coverage
-pnpm test -- --coverage --coverageThreshold='{"global":{"lines":85}}'
-
-# BDD scenarios exist for all user-facing features
+# Gherkin features exist where user-facing behavior was added
 ls tests/features/
 ```
 
-- [ ] Python coverage ≥ 85%
-- [ ] TypeScript coverage ≥ 85%
-- [ ] Gherkin .feature file exists for every new user-facing behavior
-- [ ] Happy path + error path + auth failure scenario for each feature
+- [ ] Vitest coverage ≥ 85% on files in src/services/ and src/lib/
+- [ ] Each new user-facing behavior has a Gherkin `.feature`
+- [ ] Each feature has happy path + at least one error path + (if authenticated) auth failure
+- [ ] Phase 14+: Playwright E2E tests for key flows
 
 ---
 
 ## Section 7 — Contract Compliance
 
 ```bash
-# OpenAPI specs exist for all new endpoints
-ls docs/specs/openapi/v1/
+# OpenAPI spec exists
+test -f docs/specs/openapi/v1/bendro.yaml && echo OK || echo MISSING
 
-# Validate all specs
-npx @redocly/cli lint docs/specs/openapi/v1/*.yaml 2>/dev/null || echo "No specs to lint"
+# Lint the spec
+npx @redocly/cli lint docs/specs/openapi/v1/bendro.yaml
 
-# Check contract-first enforcement (no route files without corresponding spec)
-for f in services/api/src/routes/*.py; do
-    resource=$(basename "$f" .py)
-    if [ "$resource" != "__init__" ]; then
-        spec="docs/specs/openapi/v1/${resource}.yaml"
-        if [ ! -f "$spec" ]; then
-            echo "WARNING: No OpenAPI spec for $f (expected at $spec)"
-        fi
-    fi
+# Every route handler has a matching path entry
+for f in $(find src/app/api -name route.ts); do
+  # Derive expected path, e.g., src/app/api/sessions/route.ts → /api/sessions
+  route=$(echo "$f" | sed 's|src/app||; s|/route\.ts$||')
+  grep -q "^\s*${route}:\s*$" docs/specs/openapi/v1/bendro.yaml || echo "MISSING spec entry for ${route}"
 done
 ```
 
-- [ ] OpenAPI spec exists for every route file in `services/api/src/routes/`
-- [ ] All specs pass `@redocly/cli lint` with zero errors
+- [ ] `docs/specs/openapi/v1/bendro.yaml` exists and lints clean
+- [ ] Every `src/app/api/**/route.ts` has a matching path entry in the spec
+- [ ] Request/response Zod schemas match the OpenAPI schema shapes
 
 ---
 
-## Section 8 — Multi-Tenancy
+## Section 8 — User Scoping (Cross-User Isolation)
 
 ```bash
-# Run cross-tenant isolation test
-pytest tests/integration/python/test_cross_tenant_isolation.py -v
-
-# Check all repository methods filter by workspace_id
-grep -n "def.*workspace_id" services/api/src/repositories/*.py
+# Search for service functions that accept a userId param — should be most of them
+grep -rn "userId: string\|userId: User\['id'\]" src/services/ --include="*.ts"
 ```
 
-- [ ] Cross-tenant queries return empty (not 403, not other tenant's data)
-- [ ] All repository SELECT methods accept and apply `workspace_id` parameter
-- [ ] workspace_id sourced from JWT `tenantId` claim only (never from request body)
+- [ ] Every service function that reads or writes user-owned data takes a `userId` argument and uses it in the query
+- [ ] Cross-user reads return `null` from the service, which the route maps to 404
+- [ ] `userId` passed to services comes from `requireSession()` — never from request body
 
 ---
 
@@ -272,21 +210,19 @@ grep -n "def.*workspace_id" services/api/src/repositories/*.py
 After running all sections, output:
 
 ```
-ENTERPRISE STANDARDS CHECK — Creator OS
-========================================
-Naming Conventions:    PASS ✓ | FAIL ✗ (N violations)
-Code Size Limits:      PASS ✓ | FAIL ✗ (N violations)
-Design Patterns:       PASS ✓ | FAIL ✗ (N violations)
-Architecture:          PASS ✓ | FAIL ✗ (N violations)
-Security:              PASS ✓ | FAIL ✗ (N violations)
-Documentation:         PASS ✓ | FAIL ✗ (N violations)
-Test Coverage:         PASS ✓ | FAIL ✗ (N% — need 85%)
-Contracts:             PASS ✓ | FAIL ✗ (N missing specs)
-Multi-Tenancy:         PASS ✓ | FAIL ✗ (N violations)
+ENTERPRISE STANDARDS CHECK — Bendro
+====================================
+Naming Conventions:    PASS / FAIL (N violations)
+Code Size Limits:      PASS / FAIL (N violations)
+Design Patterns:       PASS / FAIL (N violations)
+Security:              PASS / FAIL (N violations)
+Documentation:         PASS / FAIL (N violations)
+Test Coverage:         PASS / FAIL (N% — need 85%)
+Contracts:             PASS / FAIL (N missing spec entries)
+User Scoping:          PASS / FAIL (N violations)
 
 OVERALL: PASS / FAIL
 If FAIL: PR submission is BLOCKED until all failures are resolved.
 ```
 
-See docs/STANDARDS.md for the full standards reference.
-See docs/GOVERNANCE.md for security and compliance requirements.
+See `docs/STANDARDS.md` for the full standards reference.

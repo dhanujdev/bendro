@@ -1,103 +1,116 @@
+---
+name: db-migration-review
+description: >
+  Reviews any change to src/db/schema.ts. Checks that drizzle-kit generates a
+  clean migration, every user-data table has userId, indexes exist on foreign
+  keys, non-null columns added to existing tables have defaults, and the
+  src/lib/data.ts mock adapter is updated to match the new schema shape.
+---
+
 # Skill: db-migration-review
 
-Invoke this skill whenever a **Prisma schema change is proposed**.
-Invoke it BEFORE writing the migration and again during PR review.
+Invoke whenever a change to `src/db/schema.ts` is proposed.
+Invoke BEFORE generating the migration and again during PR review.
 
 ## Pre-Conditions
-- docs/specs/DOMAIN_MODEL.md has been read
-- ADR-0005 (multi-tenancy isolation) has been read
+- The ADR covering the schema change has been read (or written via `create-adr`)
+- `docs/architecture/er-diagram.md` has been read
 
 ## Naming Review
 ```
-[ ] Table names: snake_case, plural (e.g., workflow_runs, audit_events)
-[ ] Column names: snake_case (e.g., workspace_id, created_at)
-[ ] Index names: idx_{table}_{columns} (e.g., idx_workflow_runs_workspace_id)
-[ ] FK constraint names: fk_{table}_{referenced_table}
-[ ] Enum names: SCREAMING_SNAKE_CASE values
+[ ] Table names: snake_case, plural (users, sessions, routines, routine_stretches)
+[ ] Column names: camelCase in Drizzle TS, snake_case in SQL — Drizzle handles the map
+[ ] Index names: Drizzle auto-names, but if custom: idx_{table}_{columns}
+[ ] FK names: Drizzle auto-names, but if custom: {table}_{refTable}_fkey
+[ ] Enum-like values: lowercase string unions in TS (e.g., 'free' | 'active' | 'canceled')
 ```
 
-## Multi-Tenancy (Security Requirement)
+## User-Scoping (Security Requirement)
 ```
-[ ] EVERY new table containing creator data has workspace_id column:
-      workspace_id  String  @db.Uuid
-      // Non-nullable, always included in queries
-[ ] workspace_id has a non-null constraint (no default)
-[ ] An index exists on workspace_id for every such table:
-      @@index([workspace_id])
-[ ] Foreign keys to workspaces table are explicit
+[ ] EVERY new table containing user-owned data has a userId column:
+      userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' })
+[ ] userId is NOT NULL (no default allowed for user data)
+[ ] An index exists on userId for every user-scoped table:
+      index('idx_{table}_user_id').on(t.userId)
+[ ] FK to users.id is explicit, with an onDelete policy (cascade | set null | restrict)
 ```
 
-Tenant-scoped tables (MUST have workspace_id):
-projects, workflow_runs, workflow_step_runs, approval_requests, generated_artifacts,
-validation_results, audit_events, token_usage_events, budget_snapshots
+User-scoped tables (MUST have userId): `sessions, favorites, streaks, user_preferences` (and any new user-owned table)
+Catalog tables (no userId): `stretches, routines, routine_stretches`
+Edge case: `routines` may have an optional `ownerId` for user-created routines — ownership check lives in the service layer.
 
-Platform-scoped tables (NO workspace_id):
-workflow_definitions, tool_definitions, model_definitions, plan_tiers
+bendro is a per-user product (no workspaces / no multi-tenancy). "userId from NextAuth session" is the single tenant axis.
 
 ## Performance Review
 ```
-[ ] Indexes on all foreign key columns
-[ ] Indexes on all columns used in WHERE clauses in hot paths
-[ ] Columns used in ORDER BY have appropriate indexes
-[ ] pgvector columns have HNSW index with documented dimensionality
-[ ] No full-table scans expected on tables > 10K rows without index
+[ ] Index on every foreign key column
+[ ] Index on every column used in WHERE in hot paths (routineId in sessions, etc.)
+[ ] ORDER BY columns on hot lists are indexed (createdAt desc on sessions)
+[ ] No full-table scans expected on tables > 10K rows without an index
+[ ] Text search columns use a trigram / pg_trgm index if used in LIKE filters
 ```
 
 ## Data Safety Review
 ```
-[ ] No non-nullable column added to existing table without a DEFAULT value
-[ ] Audit/event tables are append-only — document constraint and repository enforcement
-[ ] Sensitive data columns documented in docs/DATA_CLASSIFICATION.md
-[ ] No plaintext storage of secrets, tokens, or passwords
-[ ] Cascade delete behavior is explicit and intentional (OnDelete: Cascade vs Restrict)
+[ ] No non-nullable column added to an EXISTING table without a DEFAULT value
+      (otherwise the migration fails against existing rows)
+[ ] Sensitive fields flagged — never store plaintext passwords, tokens, Stripe secrets
+[ ] Cascade behavior is explicit and intentional (onDelete: 'cascade' | 'set null' | 'restrict')
+[ ] No PII columns beyond what the product needs (data minimization)
+[ ] Soft-delete only where we need history — hard delete is fine for ephemeral records
 ```
 
 ## Migration File Review
 ```
-[ ] Migration has a descriptive name (not "migration" or "update"):
-      prisma migrate dev --name add_workspace_budget_snapshots
-[ ] Migration file committed alongside schema changes (same PR)
-[ ] Rollback strategy documented in PR description
-[ ] Tested against the current dev database before committing
-[ ] Migration does NOT modify audit_events or token_usage_events tables
-      (these are append-only — schema changes must be additive only)
+[ ] Generate with: pnpm db:generate
+[ ] Inspect the generated SQL in drizzle/ — it must match intent
+[ ] Migration name is descriptive (rename the generated file if needed):
+      0007_add_user_preferences.sql    # good
+      0007_migration.sql                # bad
+[ ] Migration file is committed in the SAME PR as the schema change
+[ ] Rollback strategy is noted in the PR description (DROP TABLE or ALTER back)
+[ ] Tested locally: `pnpm db:migrate` runs against a dev Neon branch without error
+```
+
+## Mock Adapter Sync (src/lib/data.ts)
+```
+[ ] src/lib/data.ts and src/lib/mock-data.ts updated to match the new schema shape
+[ ] New table or column is represented in the in-memory mock dataset
+[ ] Mock returns the same TS type as the Drizzle path — otherwise callers will break
+[ ] If a new method is added, implement it in BOTH the mock path and the Drizzle path
+[ ] src/db/seed.ts updated if the catalog gained a new seed row
 ```
 
 ## After the Review
 
-### Run the migration
+### Generate and run the migration
 ```bash
-# Generate and apply migration
-npx prisma migrate dev --name {descriptive_name}
-
-# Verify Prisma client regenerated
-npx prisma generate
-
-# Verify migration applied
-psql postgresql://postgres:postgres@localhost:5432/creator_os \
-  -c "SELECT migration_name, finished_at FROM _prisma_migrations ORDER BY finished_at DESC LIMIT 5;"
+pnpm db:generate            # creates SQL in drizzle/
+pnpm db:migrate             # applies against the configured Neon / local Postgres
+pnpm db:studio              # optional — inspect the resulting schema
 ```
 
-### Update ER Diagram
+### Update the ER diagram
 ```
 [ ] docs/architecture/er-diagram.md updated to reflect schema changes
-[ ] New tables shown with all columns and relationships
-[ ] Invoke architecture-diagram-update skill
+[ ] New tables shown with columns, types, and relationships
+[ ] Invoke the architecture-diagram-update skill to verify diagrams render
 ```
 
-### Update Domain Model Spec
+### Update seed data (if catalog-facing)
 ```
-[ ] docs/specs/DOMAIN_MODEL.md updated with new/changed entities
-[ ] New entity invariants documented (e.g., "workspace_id is required and immutable")
+[ ] src/db/seed.ts updated so `pnpm db:seed` produces a realistic dev dataset
+[ ] Mock data in src/lib/mock-data.ts updated so local dev without DATABASE_URL still works
 ```
 
 ## Quick Checklist Summary (PR Review)
 ```
-[ ] Table/column naming follows conventions
-[ ] workspace_id on all user-data tables
-[ ] Indexes on all FK and hot-query columns
-[ ] Rollback strategy documented
-[ ] No non-nullable without DEFAULT on existing table
+[ ] Table / column naming follows conventions
+[ ] userId + index on every user-scoped table
+[ ] Indexes on all FKs and hot-query columns
+[ ] Rollback strategy documented in PR
+[ ] No non-nullable-without-default on existing tables
+[ ] src/lib/data.ts + src/lib/mock-data.ts match the new shape
 [ ] ER diagram updated
-[ ] DATA_CLASSIFICATION.md updated if new sensitive fields
+[ ] Seed data updated where catalog tables changed
 ```

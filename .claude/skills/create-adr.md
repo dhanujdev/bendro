@@ -1,13 +1,22 @@
+---
+name: create-adr
+description: >
+  Creates a numbered Architectural Decision Record in docs/ADR/NNNN-<slug>.md.
+  ADRs 0001–0010 are reserved for foundation decisions. Use for any
+  technology choice, new module boundary, or cross-cutting concern. Commit
+  the ADR before implementing the decision.
+---
+
 # Skill: create-adr
 
 Invoke this skill whenever a major technical or architectural decision is being made.
-**Do not implement the decision before the ADR is written and its status is Accepted.**
+**Do not implement the decision before the ADR is written and its Status is Accepted.**
 
 ## When to Invoke
-- Choosing between technology options (framework, library, pattern)
-- Defining a new service boundary or package responsibility
-- Changing an existing architectural decision (supersedes old ADR)
-- Introducing a new cross-cutting concern (security, observability, etc.)
+- Choosing between technology options (library, pattern, infra primitive)
+- Defining a new module boundary or changing an existing one
+- Changing a prior architectural decision (supersedes the old ADR)
+- Introducing a new cross-cutting concern (auth, billing, observability, safety)
 
 ## File Location
 `docs/ADR/{NNNN}-{kebab-case-title}.md`
@@ -16,7 +25,7 @@ Find the current max ADR number:
 ```bash
 ls docs/ADR/ | sort | tail -1
 ```
-Use next sequential number.
+Use the next sequential number.
 
 ## Required Template
 ```markdown
@@ -63,7 +72,7 @@ Use active voice: "We will use X for Y because Z."}
 
 ## Follow-up Actions
 - [ ] {Implementation step required by this decision}
-- [ ] {Documentation update required}
+- [ ] {Documentation update required (diagrams, CHANGELOG, etc.)}
 - [ ] {Other agent to notify of this decision}
 
 ## References
@@ -71,25 +80,24 @@ Use active voice: "We will use X for Y because Z."}
 ```
 
 ## After Writing the ADR
-1. Add to docs/DECISIONS.md:
+1. Add a row to `docs/DECISIONS.md`:
    `| ADR-{NNNN} | {one-line summary} | {date} | {status} |`
-2. If this supersedes an existing ADR, update the old ADR's Status field
-3. Commit the ADR BEFORE writing any implementation code
+2. If this supersedes an existing ADR, set the old ADR's Status to `Superseded by ADR-{NNNN}`
+3. Commit the ADR BEFORE writing any implementation code:
+   `git commit -m "docs(adr): ADR-{NNNN} {short title}"`
 
-## Reserved ADR Numbers
-- 0001: Monorepo + doc-driven execution
-- 0002: Tech stack selection
-- 0003: Direct LLM API for MVP packaging
-- 0004: LangGraph as exclusive orchestration runtime
-- 0005: Multi-tenancy via workspace_id row-level isolation
-- 0006: Three-layer validator architecture
-- 0007: Model abstraction via single model_router.py
-- 0008: LangSmith as AI observability
-- 0009: Append-only event-sourced audit log
-- 0010: FastAPI backend migration
-- 0011: Inngest workers with Temporal migration path
-- 0012: pgvector embedding storage
-- 0013: Contract-first development
-- 0014: BDD/TDD mandate
-- 0015: Repository pattern for all DB access
-- 0016+: Available for future decisions
+## Reserved ADR Numbers (Foundation)
+Numbers 0001–0010 are reserved for foundation decisions, allocated as bendro phases land them:
+- 0001: Doc-driven execution + skills/agents framework port from Creator OS
+- 0002: Next.js 16 App Router + React 19 + TS 5 as the core stack
+- 0003: Drizzle ORM + Neon serverless Postgres with in-memory mock fallback (src/lib/data.ts)
+- 0004: Single data adapter boundary (src/lib/data.ts) — no env branching in callers
+- 0005: Pose/VRM single-module boundary (src/lib/pose/vrm-driver.ts)
+- 0006: NextAuth.js for authentication (Phase 3)
+- 0007: Stripe for billing, webhooks verify signature + idempotent (Phase 9)
+- 0008: Contract-first (OpenAPI) + BDD/TDD mandate
+- 0009: Observability via Sentry + Vercel Analytics (Phase 12)
+- 0010: AI client single boundary (src/services/ai/ai-client.ts) — when AI routine gen lands
+- 0011+: Available for future decisions
+
+Numbers that are not yet filed are still reserved. If you need to file ADR-0006 but 0005 doesn't exist yet, create both or renumber consistently — never skip or duplicate.

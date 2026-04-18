@@ -1,123 +1,165 @@
+---
+name: architecture-diagram-update
+description: >
+  Invoked when a module boundary changes in bendro — new service in src/services/,
+  new external SDK wrapper, new route group, pose-module change, or schema change.
+  Updates the Mermaid diagrams in docs/architecture/ (system context, component,
+  sequence, ER) so they match current reality.
+---
+
 # Skill: architecture-diagram-update
 
-Invoke whenever service boundaries, data flows, or DB schema change significantly.
-Architecture diagrams are part of the PR — not an afterthought.
+Invoke whenever module boundaries, data flows, or the Drizzle schema change.
+Architecture diagrams ship in the same PR as the code change — never as an afterthought.
 
 ## Trigger Conditions
 | Change | Diagrams to Update |
 |--------|-------------------|
-| New service or package added | container.md |
-| New external system integrated | system-context.md, container.md |
-| LangGraph node added/removed/renamed | component-orchestrator.md, workflow-graph.md |
-| Prisma schema change (new table) | er-diagram.md |
-| New workflow type implemented | workflow-graph.md |
-| Key request flow changed | sequence-diagrams.md |
-| New package added to monorepo | container.md |
+| New service file added under `src/services/` | component.md |
+| New external SDK wrapped (Stripe, MediaPipe, AI client) | system-context.md, component.md |
+| Drizzle schema change in `src/db/schema.ts` | er-diagram.md |
+| Pose / VRM driver refactor in `src/lib/pose/` | component.md, sequence-player.md |
+| New route group added under `src/app/` | component.md |
+| Key request flow changed (session create, streak update, checkout) | sequence-*.md |
+| NextAuth, Stripe, or Neon integration wired up | system-context.md |
 
 ## Diagram Files
 
 ### docs/architecture/system-context.md (C4 Level 1)
+Shows bendro and its external dependencies.
+
 ```mermaid
 C4Context
-  title System Context — Creator OS
-  
-  Person(creator, "Content Creator", "Entrepreneur/influencer setting goals and reviewing content")
-  Person(admin, "Platform Owner/Admin", "Controls policies, budgets, approvals")
-  Person(developer, "Developer/Agent Builder", "Builds new workflows via Claude Code")
-  
-  System(creator_os, "Creator OS", "AI-assisted content creation and marketing platform")
-  
-  System_Ext(anthropic, "Anthropic API", "Claude LLM provider")
-  System_Ext(langsmith, "LangSmith", "AI workflow tracing and evaluation")
-  System_Ext(social, "Social Platforms", "Instagram, YouTube, LinkedIn")
-  System_Ext(storage, "Object Storage", "MinIO (local) / S3 (prod)")
-  
-  Rel(creator, creator_os, "Sets goals, reviews artifacts, approves publishing", "HTTPS")
-  Rel(admin, creator_os, "Configures policies, budgets, approves workflows", "HTTPS")
-  Rel(developer, creator_os, "Builds workflows, deploys agents", "CLI/API")
-  Rel(creator_os, anthropic, "LLM inference", "HTTPS/API")
-  Rel(creator_os, langsmith, "Traces and evaluations", "HTTPS/API")
-  Rel(creator_os, social, "Publishes content", "HTTPS/OAuth")
-  Rel(creator_os, storage, "Stores media and artifacts", "S3 API")
+  title System Context — Bendro
+
+  Person(user, "End User", "Adult working on flexibility and mobility")
+
+  System(bendro, "Bendro", "AI-guided flexibility + mobility copilot (Next.js on Vercel)")
+
+  System_Ext(neon, "Neon Postgres", "Serverless Postgres (production DB)")
+  System_Ext(nextauth, "NextAuth Provider", "OAuth/email identity (Phase 3+)")
+  System_Ext(stripe, "Stripe", "Subscription billing (Phase 9+)")
+  System_Ext(mediapipe, "MediaPipe Tasks Vision", "Client-side pose detection")
+  System_Ext(vercel, "Vercel Platform", "Hosting, Edge runtime, Analytics")
+  System_Ext(sentry, "Sentry", "Error + perf monitoring (Phase 12+)")
+
+  Rel(user, bendro, "Browses routines, runs sessions, tracks streaks", "HTTPS")
+  Rel(bendro, neon, "Reads/writes user + catalog data", "SQL over TLS")
+  Rel(bendro, nextauth, "Sign-in", "OAuth/OIDC")
+  Rel(bendro, stripe, "Checkout, webhooks, subscription lifecycle", "HTTPS")
+  Rel(user, mediapipe, "Pose landmarks computed in-browser", "WebAssembly — no upload")
+  Rel(bendro, vercel, "Build, deploy, serve", "Git integration")
+  Rel(bendro, sentry, "Error reports", "HTTPS")
 ```
 
-### docs/architecture/container.md (C4 Level 2)
-Show all services, packages, and their communication patterns.
-Each service shows: technology, responsibility, communication direction.
+### docs/architecture/component.md (C4 Level 2/3)
+Show the internal modules: route groups, services, db, lib/pose.
+Annotate each with its responsibility and what it imports.
 
-### docs/architecture/component-orchestrator.md (C4 Level 3)
-Show inside services/orchestrator: graphs, nodes, validators, model_router, state, repositories.
-Show data flow: request → graph → node → model_router → validator → artifact.
+```mermaid
+flowchart LR
+  subgraph App[src/app]
+    MKT["(marketing)"]
+    APP["(app)"]
+    ONB[onboarding]
+    PLY[player]
+    API[api/**/route.ts]
+  end
+
+  subgraph Services[src/services]
+    ROUT[routines.ts]
+    SES[sessions.ts]
+    STR[streaks.ts]
+    BIL[billing.ts]
+    PER[personalization.ts]
+  end
+
+  subgraph Lib[src/lib]
+    DATA[data.ts — mock/DB adapter]
+    POSE[pose/vrm-driver.ts]
+  end
+
+  subgraph DB[src/db]
+    SCH[schema.ts]
+    IDX[index.ts]
+  end
+
+  API --> Services
+  APP --> Services
+  ONB --> Services
+  PLY --> POSE
+  Services --> DATA
+  DATA --> DB
+  BIL -->|Stripe SDK| EXT_STRIPE[(Stripe)]
+```
 
 ### docs/architecture/er-diagram.md
+Drizzle schema as an ER diagram. Update on every `src/db/schema.ts` change.
+
 ```mermaid
 erDiagram
-    Workspace ||--o{ Project : "has many"
-    Workspace ||--o{ WorkflowRun : "has many"
-    Workspace ||--o{ BudgetSnapshot : "has one active"
-    Project ||--o{ WorkflowRun : "triggers"
-    WorkflowRun ||--o{ WorkflowStepRun : "has many"
-    WorkflowRun ||--o{ GeneratedArtifact : "produces"
-    WorkflowRun ||--o{ AuditEvent : "emits"
-    WorkflowRun ||--o{ TokenUsageEvent : "records"
-    WorkflowRun ||--o{ ValidationResult : "records"
-    WorkflowRun ||--o{ ApprovalRequest : "may have"
-    
-    Workspace {
+    users ||--o{ sessions : "records"
+    users ||--o{ favorites : "owns"
+    users ||--|| streaks : "has"
+    routines ||--o{ routine_stretches : "contains"
+    stretches ||--o{ routine_stretches : "appears in"
+    routines ||--o{ sessions : "completed as"
+
+    users {
       uuid id PK
-      string name
-      uuid plan_tier_id FK
-      datetime created_at
+      text email
+      text name
+      text subscriptionStatus
+      timestamp createdAt
     }
-    %% ... all entities with their key fields
+    routines {
+      uuid id PK
+      uuid ownerId FK "nullable — null = catalog"
+      text title
+      int durationSeconds
+    }
+    %% ... remaining tables
 ```
 
-### docs/architecture/workflow-graph.md
+### docs/architecture/sequence-player.md
+Camera -> pose -> avatar flow. Emphasize that pose data never leaves the client.
+
 ```mermaid
-flowchart TD
-    START([Start]) --> ingest_goal
-    ingest_goal --> resolve_policy
-    resolve_policy --> generate_brief
-    generate_brief --> validate_brief
-    validate_brief -->|passed| generate_strategy
-    validate_brief -->|failed, retries_left| revise_brief
-    validate_brief -->|failed, exhausted| approval_gate
-    revise_brief --> generate_brief
-    generate_strategy --> validate_strategy
-    validate_strategy -->|passed| approval_gate
-    validate_strategy -->|failed, retries_left| revise_strategy
-    validate_strategy -->|failed, exhausted| approval_gate
-    revise_strategy --> generate_strategy
-    approval_gate -->|not_required| persist_artifacts
-    approval_gate -->|required| INTERRUPT([⏸ Await Admin Approval])
-    INTERRUPT -->|approved| persist_artifacts
-    INTERRUPT -->|rejected| FAIL([Failed])
-    persist_artifacts --> emit_final_events
-    emit_final_events --> END([Complete])
+sequenceDiagram
+  actor User
+  participant Player as /player page (client)
+  participant Pose as src/lib/pose/vrm-driver.ts
+  participant MP as MediaPipe (WASM, in-browser)
+  User->>Player: Click "Start camera"
+  Player->>Pose: initialize()
+  Pose->>MP: load model (in-browser)
+  loop per animation frame
+    Player->>MP: videoFrame
+    MP-->>Pose: landmarks
+    Pose-->>Player: VRM bone transforms
+  end
+  Note over Player,MP: Landmarks + frames NEVER leave the browser
 ```
 
-### docs/architecture/sequence-diagrams.md
-Key flows: goal intake, approval cycle, budget enforcement, auth flow.
+### docs/architecture/sequence-session-create.md
+Happy-path POST /api/sessions. Shows: route -> service -> data adapter -> mock OR Neon.
 
 ## Diagram Rules
 ```
-[ ] All Mermaid diagrams render without syntax errors
-[ ] All relationships are labelled (protocol/pattern: HTTP, SQL, events, etc.)
-[ ] Async flows use dashed arrows (--->)
-[ ] External systems use a distinct style
-[ ] Each diagram file has a title comment and last-updated date
-[ ] Diagrams match the current code (not aspirational future state)
+[ ] All Mermaid blocks render without syntax errors
+[ ] Every relationship is labelled with protocol/pattern (HTTPS, SQL, WASM, etc.)
+[ ] Async flows use dashed arrows (-->)
+[ ] External systems styled distinctly from internal modules
+[ ] Each file has a one-line title and a "Last updated: YYYY-MM-DD" comment
+[ ] Diagrams describe the CURRENT code, not aspirational future state
 ```
 
 ## Validate Diagrams
 ```bash
-# Validate a single diagram
-npx @mermaid-js/mermaid-cli --version  # verify installed
-# Extract mermaid blocks and validate:
-grep -A 100 '```mermaid' docs/architecture/container.md | grep -B 100 '```' \
-  | npx mmdc -i /dev/stdin -o /dev/null 2>&1
+# Syntax-check by rendering to /dev/null
+npx @mermaid-js/mermaid-cli -i docs/architecture/component.md -o /tmp/_.svg
 
-# Or just visually verify by opening in VS Code with Mermaid preview extension
+# Or open in VS Code with the Mermaid preview extension
 ```
 
 ## After Updating Diagrams

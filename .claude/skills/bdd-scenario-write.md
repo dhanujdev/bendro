@@ -1,159 +1,177 @@
+---
+name: bdd-scenario-write
+description: >
+  Writes Gherkin .feature files under tests/features/{domain}/{feature}.feature.
+  Scenarios must cover happy path, validation errors, and — when applicable —
+  auth failure and free-tier vs paid gating. Run after contract-first and
+  before any implementation.
+---
+
 # Skill: bdd-scenario-write
 
-Invoke this skill **AFTER contract-first skill** and **BEFORE writing any implementation code**.
-Gherkin scenarios are the specification for the sprint. Failing step definitions are committed before implementation.
+Invoke this skill **AFTER contract-first** and **BEFORE writing any implementation code**.
+Gherkin scenarios are the specification for the feature. Failing step definitions are committed before implementation.
 
 ## File Location
 `tests/features/{domain}/{feature}.feature`
 
-Domain folders:
-- `auth/` — authentication, authorization, RBAC
-- `workflows/` — workflow runs, goal intake, status
-- `policies/` — budget enforcement, content moderation, feature flags
-- `approvals/` — human-in-the-loop approval cycle
-- `artifacts/` — generated artifact delivery and management
-- `admin/` — control plane: audit timeline, cost dashboard, policy config
+Domain folders used in bendro:
+- `auth/` — NextAuth sign-in, sign-out, session enforcement
+- `onboarding/` — first-run goal capture, safety questionnaire
+- `routines/` — catalog browse, filter, detail
+- `sessions/` — start/complete a routine, persistence
+- `streaks/` — daily streak rollover, restoration
+- `player/` — camera gating, pose runtime, avatar lifecycle
+- `billing/` — Stripe checkout, subscription status, webhook
+- `safety/` — pain feedback, disclaimer gating (Phase 11+)
 
 ## Gherkin Template
 ```gherkin
-Feature: {Feature Name — matches PRD user story title}
-  As a {Creator | WORKSPACE_OWNER | PLATFORM_ADMIN}
-  I want to {concrete action}
-  So that {business benefit}
+Feature: Create a workout session
+  As a signed-in user
+  I want to log a completed routine as a session
+  So that my streak and history update correctly
 
   Background:
-    Given I am authenticated as a workspace owner
-    And my workspace has id "ws-test-001"
-    And my workspace policy allows "content_strategy_v1" workflow
+    Given I am signed in as "user-test-001"
+    And the routine catalog contains a routine "morning-mobility-5m"
 
   # ============================================================
   # Happy Path
   # ============================================================
-  Scenario: Successfully start a content strategy workflow
-    Given I have a project titled "Q4 Social Campaign"
-    And the project goal is "Generate LinkedIn content for product launch"
-    When I start a "content_strategy_v1" workflow for the project
-    Then the response status is 202
-    And the response contains a "workflow_run_id"
-    And the workflow run status is "running"
+  Scenario: Successfully create a session for a completed routine
+    When I POST /api/sessions with routineId "morning-mobility-5m" and durationSeconds 300
+    Then the response status is 201
+    And the response body data has a "sessionId"
+    And my streak for today is incremented
+    And a structured log entry is emitted with userId, route, status, durationMs
 
   # ============================================================
   # Validation Errors
   # ============================================================
-  Scenario: Reject workflow start with empty goal
-    Given I have a project titled "Empty Goal Project"
-    When I start a workflow with an empty goal
+  Scenario: Reject session with unknown routineId
+    When I POST /api/sessions with routineId "does-not-exist" and durationSeconds 300
     Then the response status is 422
-    And the error code is "GOAL_REQUIRED"
-    And the error details reference the "goal" field
+    And the error code is "VALIDATION_ERROR"
+    And the error details reference "routineId"
 
-  Scenario: Reject workflow start for disabled workflow type
-    Given my workspace policy does not allow "content_strategy_v1"
-    When I attempt to start a "content_strategy_v1" workflow
-    Then the response status is 403
-    And the error code is "WORKFLOW_TYPE_DISABLED"
+  Scenario: Reject session with negative duration
+    When I POST /api/sessions with routineId "morning-mobility-5m" and durationSeconds -10
+    Then the response status is 422
+    And the error code is "VALIDATION_ERROR"
+    And the error details reference "durationSeconds"
 
   # ============================================================
-  # Authorization
+  # Authentication
   # ============================================================
-  Scenario: Viewer cannot start workflows
-    Given I am authenticated as a workspace viewer
-    When I attempt to start a workflow
-    Then the response status is 403
-    And the error code is "INSUFFICIENT_PERMISSIONS"
+  Scenario: Unauthenticated request is rejected
+    Given I am not signed in
+    When I POST /api/sessions with a valid body
+    Then the response status is 401
+    And the error code is "UNAUTHENTICATED"
 
-  Scenario: Cannot access another workspace's workflow
-    Given workspace "ws-other" has a workflow run "run-abc"
-    When I request the status of workflow run "run-abc"
+  # ============================================================
+  # Cross-user isolation
+  # ============================================================
+  Scenario: Cannot read another user's session
+    Given user "user-other" owns session "ses-abc"
+    When I GET /api/sessions/ses-abc
     Then the response status is 404
-    And no data from workspace "ws-other" is revealed
+    And no data from user "user-other" is revealed
 
   # ============================================================
-  # Edge Cases
+  # Free-tier vs paid (applies from Phase 9)
   # ============================================================
-  Scenario: Workflow blocked by budget limit
-    Given my workspace has exhausted its monthly token budget
-    When I attempt to start a workflow
-    Then the response status is 402
-    And the error code is "BUDGET_EXCEEDED"
-    And a "budget_exceeded" audit event is recorded
+  Scenario: Free user is blocked from premium-only routine
+    Given my subscriptionStatus is "free"
+    And the routine "deep-hip-opener-premium" is marked premium
+    When I POST /api/sessions with routineId "deep-hip-opener-premium"
+    Then the response status is 403
+    And the error code is "PREMIUM_REQUIRED"
 ```
 
 ## Quality Rules for Scenarios
 
 ### DO
-- Use domain language (not implementation details)
+- Use domain language (routine, session, streak, pain rating) — not implementation jargon
 - Make Then clauses specific and measurable
-- Test auth failure in every feature (it's a security requirement)
-- Test cross-tenant isolation if the feature accesses user data
-- Include the audit event check when an action should be audited
+- Test auth failure in every feature touching user data (security requirement)
+- Test cross-user isolation on any endpoint that reads user-owned data
+- From Phase 9+, include at least one free-vs-paid scenario for gated features
+- For any Phase 11 safety-touching feature, include a pain ≥ 7 scenario
 
 ### DON'T
-- Share state between scenarios (each must be independent)
-- Reference database IDs directly in Given clauses
+- Share state between scenarios — each must be independent
+- Reference database IDs or Drizzle internals in Given clauses
 - Use vague Then clauses like "the operation succeeds"
-- Skip the authorization failure scenario — it's mandatory
+- Skip the 401 scenario on authenticated endpoints
 
 ## Minimum Scenarios Per Feature
 ```
 1. Happy path (complete successful flow)
 2. At least 1 validation error path (invalid input → 422)
-3. Authorization failure (wrong role → 403)
-4. Cross-tenant isolation (if feature accesses user data → 404, not 403)
-5. Edge case specific to this domain
+3. Authentication failure (no session → 401) — if endpoint is authenticated
+4. Cross-user isolation (if feature reads user-owned data → 404, not 403)
+5. One domain-specific edge case (streak rollover at midnight, camera denied, webhook replay, etc.)
+6. From Phase 9+, free-tier gating scenario — if the feature is premium-gated
 ```
 
 ## After Writing Scenarios
 
-### Step 1: Create stub step definitions (they MUST fail)
-```python
-# tests/step_definitions/workflows/workflow_run_steps.py
-from behave import given, when, then
+### Step 1: Create stub step definitions that FAIL
+Bendro uses Vitest for step execution. Write failing steps in `tests/features/{domain}/steps/{feature}.steps.ts`:
 
-@given('I am authenticated as a workspace owner')
-def step_auth_workspace_owner(context):
-    raise NotImplementedError("Step not implemented yet — RED phase")
+```typescript
+// tests/features/sessions/steps/create-session.steps.ts
+import { Given, When, Then } from 'vitest-cucumber' // or your chosen runner
 
-@when('I start a "{workflow_type}" workflow for the project')
-def step_start_workflow(context, workflow_type):
-    raise NotImplementedError("Step not implemented yet — RED phase")
+Given('I am signed in as {string}', (_userId: string) => {
+  throw new Error('Step not implemented yet — RED phase')
+})
 
-@then('the response status is {status_code:d}')
-def step_check_status(context, status_code):
-    raise NotImplementedError("Step not implemented yet — RED phase")
+When('I POST /api/sessions with routineId {string} and durationSeconds {int}', (_routineId: string, _seconds: number) => {
+  throw new Error('Step not implemented yet — RED phase')
+})
+
+Then('the response status is {int}', (_code: number) => {
+  throw new Error('Step not implemented yet — RED phase')
+})
 ```
 
 ### Step 2: Run to confirm they fail
 ```bash
-behave tests/features/workflows/workflow_run.feature
+pnpm test tests/features/sessions/create-session.feature
 # Expected: all scenarios FAIL — this is correct (RED phase)
 ```
 
 ### Step 3: Commit the failing tests
 ```bash
-git add tests/features/ tests/step_definitions/
-git commit -m "test(bdd): add failing scenarios for workflow run — RED phase"
+git add tests/features/
+git commit -m "test(bdd): add failing scenarios for create-session — RED phase"
 ```
 
 ### Step 4: Only now begin implementation (GREEN phase)
 
-## Step Definition Patterns
-```python
-# Auth fixture — reuse across all step definitions
-@given('I am authenticated as a {role}')
-def step_auth(context, role):
-    """Set up JWT token for the specified role in context.headers."""
-    context.headers = {"Authorization": f"Bearer {get_test_token(role, context.workspace_id)}"}
+## Shared Step Patterns
+Reuse across feature files by putting shared steps in `tests/features/_shared/`:
 
-# Response capture — reuse across all
-@when('I {verb} {resource}')
-def step_api_call(context, verb, resource):
-    """Make API call and store response in context."""
-    context.response = context.client.request(verb, f"/api/v1/{resource}", headers=context.headers)
+```typescript
+// tests/features/_shared/auth.steps.ts
+Given('I am signed in as {string}', (userId: string) => {
+  // install a fake NextAuth session for the test user
+  installTestSession({ user: { id: userId, subscriptionStatus: 'free' } })
+})
 
-# Standard then steps — reuse
-@then('the response status is {code:d}')
-def step_status_check(context, code):
-    assert context.response.status_code == code, \
-        f"Expected {code}, got {context.response.status_code}: {context.response.json()}"
+Given('I am not signed in', () => {
+  clearTestSession()
+})
+
+// tests/features/_shared/response.steps.ts
+Then('the response status is {int}', function (code: number) {
+  expect(this.response.status).toBe(code)
+})
+
+Then('the error code is {string}', function (code: string) {
+  expect(this.response.body.error.code).toBe(code)
+})
 ```

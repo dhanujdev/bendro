@@ -1,60 +1,51 @@
+---
+name: repo-scaffold
+description: >
+  Bootstraps a new module in bendro — a service, a schema entity, or a route
+  group. Generates the OpenAPI stub, the Gherkin feature stub, the failing
+  Vitest test, and the implementation file with TODOs. Use to maintain the
+  contract-first → BDD → failing test → implementation sequence.
+---
+
 # Skill: repo-scaffold
 
-Invoke when initializing or verifying the repository structure.
-Run at the start of Phase 0 and at the start of any phase that introduces a new major directory.
+Invoke when introducing a new module:
+- New service file in `src/services/`
+- New schema entity (table) in `src/db/schema.ts`
+- New route group / page tree under `src/app/`
+- New API route under `src/app/api/`
 
-## Required Directory Structure
+Generates the four artifacts required by the development order in CLAUDE.md §4.
+
+## Expected Directory Structure (verify or create)
+
 ```bash
-# Verify all directories exist:
 check_dirs=(
-  "apps/web"
-  "apps/admin"
-  "services/api/src/routes"
-  "services/api/src/services"
-  "services/api/src/repositories"
-  "services/api/src/schemas"
-  "services/api/src/middleware"
-  "services/api/src/dependencies"
-  "services/orchestrator/src/graphs"
-  "services/orchestrator/src/nodes"
-  "services/orchestrator/src/state"
-  "services/orchestrator/src/validators/deterministic"
-  "services/orchestrator/src/validators/semantic"
-  "services/orchestrator/src/validators/evaluator"
-  "services/orchestrator/src/providers"
-  "services/orchestrator/src/repositories"
-  "services/orchestrator/tests"
-  "services/workers"
-  "services/ai/src"
-  "packages/db/prisma/migrations"
-  "packages/db/prisma/seed"
-  "packages/shared/src"
-  "packages/policy-engine/src"
-  "packages/observability/src"
-  "infra/docker"
-  "infra/k8s"
-  "infra/scripts"
+  "src/app/(marketing)"
+  "src/app/(app)"
+  "src/app/onboarding"
+  "src/app/player"
+  "src/app/api/routines"
+  "src/app/api/sessions"
+  "src/app/api/stretches"
+  "src/app/api/progress"
+  "src/components/ui"
+  "src/config"
+  "src/db"
+  "src/lib/pose"
+  "src/services"
+  "src/types"
   "docs/ADR"
-  "docs/specs/openapi/v1"
-  "docs/specs/asyncapi"
-  "docs/specs/workflows"
   "docs/architecture"
-  "docs/examples/policy"
-  "tests/features/auth"
-  "tests/features/workflows"
-  "tests/features/policies"
-  "tests/features/approvals"
-  "tests/features/artifacts"
-  "tests/features/admin"
-  "tests/step_definitions"
-  "tests/unit/python"
-  "tests/unit/ts"
-  "tests/integration"
-  "tests/e2e"
+  "docs/specs/openapi/v1"
+  "docs/specs/webhooks"
+  "tests/features"
+  "tests/unit"
   ".claude/agents"
   ".claude/skills"
   ".claude/hooks"
   ".claude/commands"
+  ".claude/rules"
   ".github/workflows"
 )
 
@@ -69,61 +60,192 @@ for dir in "${check_dirs[@]}"; do
 done
 ```
 
-## Required Root Files
+## Artifact 1 — OpenAPI Path Stub
+For a new API route `src/app/api/{resource}/route.ts`, add an entry to
+`docs/specs/openapi/v1/bendro.yaml`:
+
+```yaml
+paths:
+  /api/{resource}:
+    post:
+      operationId: create{Resource}
+      summary: TODO
+      description: |
+        TODO — write what this endpoint does, who can call it, and the
+        key side effects.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Create{Resource}Request' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/{Resource}Response' } } } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '422': { $ref: '#/components/responses/ValidationError' }
 ```
-CLAUDE.md               ← master execution rules
-CHANGELOG.md            ← Keep a Changelog format
-CONTRIBUTING.md         ← contributor guide
-Makefile                ← all dev commands
-README.md               ← project overview
-.pre-commit-config.yaml ← git hooks
-pyproject.toml          ← Python tooling config
-.mcp.json               ← MCP server config
-.secrets.baseline       ← detect-secrets baseline
-.semgreprc              ← semgrep config
-.env.example            ← environment variable template
-.gitignore              ← git ignore rules
-docker-compose.yml      ← local dev services
-docker-compose.test.yml ← isolated test services
-pnpm-workspace.yaml     ← monorepo config
-tsconfig.base.json      ← shared TypeScript config
+
+Commit: `docs(contracts): add stub path for /api/{resource}`
+
+## Artifact 2 — Gherkin Feature Stub
+Create `tests/features/{domain}/{feature}.feature`:
+
+```gherkin
+Feature: {Feature Title}
+  As a signed-in user
+  I want to {concrete action}
+  So that {business benefit}
+
+  Scenario: Happy path — TODO
+    Given I am signed in as "user-test-001"
+    When I TODO
+    Then the response status is 201
+    And TODO
+
+  Scenario: Reject invalid input
+    Given I am signed in as "user-test-001"
+    When I TODO with invalid body
+    Then the response status is 422
+
+  Scenario: Unauthenticated request is rejected
+    Given I am not signed in
+    When I TODO
+    Then the response status is 401
+```
+
+Commit: `test(bdd): add failing scenarios for {feature} — RED phase`
+
+## Artifact 3 — Failing Vitest Test
+Create `tests/unit/services/{service}.test.ts`:
+
+```typescript
+import { describe, it, expect } from 'vitest'
+import { create{Resource} } from '@/services/{service}'
+
+describe('create{Resource}', () => {
+  it('creates a {resource} for the signed-in user', async () => {
+    // TODO — Arrange
+    // TODO — Act
+    // TODO — Assert
+    throw new Error('Not implemented — RED phase')
+  })
+})
+```
+
+Run it once to confirm RED:
+```bash
+pnpm test tests/unit/services/{service}.test.ts
+# Expected: FAIL
+```
+
+Commit: `test({service}): add failing unit test for create{Resource} — RED`
+
+## Artifact 4 — Implementation Skeleton
+Create `src/services/{service}.ts`:
+
+```typescript
+import { z } from 'zod'
+import { getData } from '@/lib/data'
+
+/**
+ * Input shape for create{Resource}. Validated at the route boundary.
+ */
+export const Create{Resource}Schema = z.object({
+  // TODO — define fields matching OpenAPI request schema
+})
+
+export type Create{Resource}Input = z.infer<typeof Create{Resource}Schema>
+
+/**
+ * Creates a {resource} owned by the given user.
+ *
+ * @param userId - ID from the NextAuth session (never from request body).
+ * @param input - Validated input matching Create{Resource}Schema.
+ */
+export async function create{Resource}(
+  userId: string,
+  input: Create{Resource}Input,
+): Promise<never> {
+  // TODO — implement via src/lib/data.ts (mock ↔ Drizzle adapter)
+  throw new Error('Not implemented')
+}
+```
+
+And the route handler `src/app/api/{resource}/route.ts`:
+
+```typescript
+import { NextRequest, NextResponse } from 'next/server'
+import { Create{Resource}Schema, create{Resource} } from '@/services/{service}'
+// import { requireSession } from '@/lib/auth' // once Phase 3 lands
+
+/**
+ * POST /api/{resource}
+ */
+export async function POST(request: NextRequest) {
+  // const session = await requireSession()
+  // const userId = session.user.id
+  const userId = 'TODO-session-user-id'
+
+  const parsed = Create{Resource}Schema.safeParse(await request.json())
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: { code: 'VALIDATION_ERROR', details: parsed.error.flatten() } },
+      { status: 422 },
+    )
+  }
+
+  const result = await create{Resource}(userId, parsed.data)
+  return NextResponse.json({ data: result }, { status: 201 })
+}
+```
+
+Commit (after the failing test passes GREEN): `feat({service}): implement create{Resource}`
+
+## Required Root Files (verify)
+```
+CLAUDE.md
+AGENTS.md
+CHANGELOG.md
+README.md
+package.json
+tsconfig.json
+next.config.ts
+drizzle.config.ts
+.env.example
+.gitignore
 ```
 
 ## Required .claude/ Files
 ```
 .claude/settings.json
-.claude/agents/ (12 agent files)
-.claude/skills/ (15 skill files)
-.claude/hooks/  (8 hook files)
-.claude/commands/ (7 command files)
+.claude/agents/*
+.claude/skills/*   (13 skills)
+.claude/rules/*    (SYSTEM, ARCHITECTURE, SECURITY, HEALTH)
+.claude/hooks/*
+.claude/commands/*
 ```
 
 ## Required docs/ Files
 ```
-docs/STANDARDS.md
-docs/GOVERNANCE.md
-docs/PHASE_TEMPLATES.md
-docs/DATA_CLASSIFICATION.md
+docs/PHASES.md
 docs/AGENT_MEMORY.md
 docs/EXECUTION_LOG.md
 docs/SESSION_HANDOFF.md
 docs/DECISIONS.md
 docs/BLOCKERS.md
 docs/NEXT_STEPS.md
-docs/ADR/0001 through 0015
-docs/specs/ (10 spec files)
-docs/architecture/ (6 diagram files)
-docs/examples/policy/ (2 example files)
+docs/STANDARDS.md
+docs/ADR/*
+docs/specs/openapi/v1/bendro.yaml
+docs/architecture/*
 ```
 
 ## Verification Command
 ```bash
-# Quick count check
-echo "Agents: $(ls .claude/agents/*.md 2>/dev/null | wc -l) (expected 12)"
-echo "Skills: $(ls .claude/skills/*.md 2>/dev/null | wc -l) (expected 15)"
-echo "Hooks:  $(ls .claude/hooks/* 2>/dev/null | wc -l) (expected 8)"
-echo "Commands: $(ls .claude/commands/*.md 2>/dev/null | wc -l) (expected 7)"
-echo "ADRs: $(ls docs/ADR/*.md 2>/dev/null | wc -l) (expected 15)"
-echo "Specs: $(ls docs/specs/*.md 2>/dev/null | wc -l) (expected 10)"
-echo "Diagrams: $(ls docs/architecture/*.md 2>/dev/null | wc -l) (expected 6)"
+echo "Skills:   $(ls .claude/skills/*.md 2>/dev/null | wc -l) (expected 13)"
+echo "Rules:    $(ls .claude/rules/*.md 2>/dev/null | wc -l) (expected 4)"
+echo "ADRs:     $(ls docs/ADR/*.md 2>/dev/null | wc -l)"
+echo "Diagrams: $(ls docs/architecture/*.md 2>/dev/null | wc -l)"
+echo "Services: $(ls src/services/*.ts 2>/dev/null | wc -l)"
 ```

@@ -1,171 +1,152 @@
+---
+name: contract-first
+description: >
+  Enforces that an OpenAPI spec is written and committed before any Next.js
+  Route Handler is implemented. The spec for bendro lives in a single file,
+  docs/specs/openapi/v1/bendro.yaml, with one paths entry per route.
+---
+
 # Skill: contract-first
 
-Invoke this skill **BEFORE writing any implementation code** for a new endpoint, event, or workflow.
+Invoke this skill **BEFORE writing any implementation code** for a new or changed API route.
 The contract must be committed to git before any implementation begins.
 
-## Rule (ADR-0013)
+## Rule
 The contract is the specification. Implementation conforms to the contract — not the other way around.
 If you discover the contract needs changing during implementation, update the contract first and commit it.
 
-## For REST Endpoints (OpenAPI)
+## For REST Routes (OpenAPI)
 
 ### File Location
-`docs/specs/openapi/v1/{resource}.yaml`
-Examples: `workflow-runs.yaml`, `projects.yaml`, `approvals.yaml`
+Single file: `docs/specs/openapi/v1/bendro.yaml`
+All routes live under the same `paths:` tree, organized by resource.
 
-### Minimum Required Sections
+### Minimum Required Sections per Route
 ```yaml
 openapi: "3.1.0"
 info:
-  title: Creator OS API — {Resource}
+  title: Bendro API
   version: "1.0.0"
 
 paths:
-  /api/v1/{resource}:
+  /api/sessions:
     post:
-      operationId: {resourceCreate}        # required — unique, camelCase
-      summary: {Short action summary}
+      operationId: createSession              # required — unique, camelCase
+      summary: Record a completed routine as a session
       description: |
-        {Longer description. Include: what this endpoint does, when to use it,
-        key side effects (e.g., starts async workflow), and auth requirements.}
+        Creates a workout session for the authenticated user. Increments the
+        user's streak if this is the first session of the day. Requires a
+        NextAuth session. Rate limited to 30/min per userId.
       security:
-        - bearerAuth: []
+        - sessionCookie: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/{ResourceCreateRequest}'
+              $ref: '#/components/schemas/CreateSessionRequest'
             example:
-              {field}: {example value}
+              routineId: "morning-mobility-5m"
+              durationSeconds: 300
+              painRating: 2
       responses:
-        '202':
-          description: Accepted — async operation queued
+        '201':
+          description: Session created
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkflowRunResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '422':
-          $ref: '#/components/responses/ValidationError'
-        '500':
-          $ref: '#/components/responses/InternalError'
+                $ref: '#/components/schemas/SessionResponse'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
 components:
   schemas:
-    {ResourceCreateRequest}:
+    CreateSessionRequest:
       type: object
-      required: [{required_field}]
+      required: [routineId, durationSeconds]
       properties:
-        {field}:
+        routineId:
           type: string
-          description: "{What this field is and what values are valid}"
-          example: "{example value}"
-  
+          description: "ID of the routine that was completed."
+          example: "morning-mobility-5m"
+        durationSeconds:
+          type: integer
+          minimum: 1
+          description: "How long the user actually practiced, in seconds."
+        painRating:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: "Self-reported pain 0–10. ≥ 7 triggers safety flow (Phase 11)."
+
   responses:
-    BadRequest:
-      description: Invalid request format
+    Unauthenticated:
+      description: No valid NextAuth session
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
-    # ... standard responses
-    
+    # ... Forbidden, ValidationError, RateLimited, etc.
+
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+      description: "NextAuth session cookie (httpOnly, secure, sameSite=lax)"
 ```
 
 ### Validate the Spec
 ```bash
-npx @redocly/cli lint docs/specs/openapi/v1/{resource}.yaml
+npx @redocly/cli lint docs/specs/openapi/v1/bendro.yaml
 ```
-Must pass before committing.
+Must pass with zero errors before committing.
 
-## For Async Events (AsyncAPI)
+## For Server Actions With a Public Type Contract
 
 ### File Location
-`docs/specs/asyncapi/{event-name}.yaml`
+`src/types/{aggregate}.ts` — exported types that act as the contract between client and server action.
 
-### Minimum Required Sections
-```yaml
-asyncapi: "2.6.0"
-info:
-  title: "{EventName} Event"
-  version: "1.0.0"
+### Required
+- Zod schema for input
+- Exported TS type for response
+- JSDoc explaining when to use the action
+- Matching failing unit test before the action is implemented
 
-channels:
-  creator-os/{event-name}:
-    description: "{When this event is emitted and what consumers do with it}"
-    publish:
-      operationId: publish{EventName}
-      message:
-        $ref: '#/components/messages/{EventName}'
-
-components:
-  messages:
-    {EventName}:
-      name: {EventName}
-      payload:
-        type: object
-        required: [event_type, run_id, tenant_id, timestamp]
-        properties:
-          event_type:
-            type: string
-            const: "{event.type.snake_case}"
-          run_id:
-            type: string
-            format: uuid
-          tenant_id:
-            type: string
-            format: uuid
-          timestamp:
-            type: string
-            format: date-time
-          # ... event-specific fields
-```
-
-## For LangGraph Workflows
+## For Future Webhook Handlers (e.g., Stripe)
 
 ### File Location
-`docs/specs/workflows/{workflow-name}.md`
+`docs/specs/webhooks/{source}.md`
 
 ### Required Sections
 ```markdown
-# Workflow Spec: {workflow-name}
+# Webhook Spec: {source} — {event-family}
 
-## Input Schema
-{Pydantic model definition with all fields and descriptions}
+## Event Types Handled
+- `customer.subscription.updated` — propagate subscriptionStatus to the user
+- `customer.subscription.deleted` — mark subscriptionStatus = "canceled"
 
-## Output Schema (Generated Artifacts)
-{What artifacts are created and their schemas}
+## Verification
+Signature header, secret env var, rejection behavior on mismatch.
 
-## State Schema
-{Full TypedDict/Pydantic model for the workflow state}
+## Idempotency
+How we de-dup by event.id.
 
-## Error Schema
-{What errors can be returned, when, and how to handle them}
-
-## Policy Dependencies
-{What policy fields affect this workflow's behavior}
+## Side Effects
+Exact DB mutations and downstream calls.
 ```
 
 ## After Writing the Spec
-1. `git commit -m "docs(contracts): add OpenAPI spec for {resource}"`
-2. Only THEN proceed to `bdd-scenario-write` skill
-3. Contract spec is the input to all downstream steps
+1. `git commit -m "docs(contracts): add OpenAPI path for POST /api/sessions"`
+2. Only THEN proceed to the `bdd-scenario-write` skill
+3. The spec is the input to all downstream steps (BDD, implementation, tests)
 
 ## Contract Change Protocol
 If implementation reveals the contract needs adjustment:
-1. Update the contract spec file
-2. `git commit -m "docs(contracts): update {resource} spec — {reason}"`
-3. Then update the failing tests to match the new contract
-4. Then update the implementation
-5. Document the breaking change in CHANGELOG.md if it's a breaking change
+1. Update `docs/specs/openapi/v1/bendro.yaml`
+2. `git commit -m "docs(contracts): update {operationId} spec — {reason}"`
+3. Update the failing tests to match the new contract
+4. Update the implementation
+5. If it is a breaking change, bump to v2 (`docs/specs/openapi/v2/bendro.yaml`) and note it in CHANGELOG.md

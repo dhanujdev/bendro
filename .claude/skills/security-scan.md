@@ -1,100 +1,128 @@
+---
+name: security-scan
+description: >
+  Runs the bendro security scan suite: Semgrep (JS/TS SAST), detect-secrets,
+  and `pnpm audit --audit-level=high`. All gates must report zero
+  high/critical findings before a PR can be merged. Also invoked by the
+  session-end ritual.
+---
+
 # Skill: security-scan
 
 Invoke before every PR is submitted. **All gates must pass (zero high/critical findings).**
-Also invoked by the session-end ritual (make security-scan).
+Also invoked by the session-end ritual.
 
-## Gate 1: Python SAST (Bandit)
-```bash
-python -m bandit -r services/orchestrator/src services/ai/src -ll --format json \
-  | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-high_critical = [r for r in data['results'] if r['issue_severity'] in ('HIGH', 'CRITICAL')]
-if high_critical:
-    for r in high_critical:
-        print(f\"FAIL [{r['issue_severity']}] {r['filename']}:{r['line_number']} — {r['issue_text']}\")
-    sys.exit(1)
-else:
-    print(f\"PASS: {len(data['results'])} total findings, 0 HIGH/CRITICAL\")
-"
-```
-**Gate:** Zero HIGH or CRITICAL severity findings.
-MEDIUM findings: document in PR, assign remediation ticket.
+## Gate 1: Multi-Language SAST (Semgrep)
+Covers JS/TS in `src/`, catching unsafe sinks (sql.raw, eval, exec, SSRF patterns, hardcoded secrets).
 
-## Gate 2: Multi-Language SAST (Semgrep)
 ```bash
 semgrep --config=auto \
   --error \
   --exclude=node_modules \
-  --exclude=.venv \
-  --exclude=tests/ \
-  services/ packages/ apps/
+  --exclude=.next \
+  --exclude=drizzle \
+  --exclude="**/*.test.ts" \
+  --exclude="**/*.spec.ts" \
+  src/
 ```
-**Gate:** Zero findings from auto ruleset.
+**Gate:** Zero findings from the auto ruleset.
 
-## Gate 3: Secret Detection
+If findings appear, either:
+1. Fix the underlying code (preferred), or
+2. Add an inline `// nosemgrep: <rule-id> — <reason>` comment with justification, reviewed by security-lead.
+
+## Gate 2: Secret Detection
 ```bash
+# First-time: create baseline
+detect-secrets scan > .secrets.baseline
+
+# Every run: scan and verify no NEW secrets vs baseline
 detect-secrets scan --baseline .secrets.baseline
-# Then verify no new secrets vs baseline:
 detect-secrets audit .secrets.baseline
 ```
-**Gate:** Zero new secrets introduced vs baseline.
+**Gate:** Zero new secrets vs baseline.
 
-If secrets are found:
-1. Remove the secret from the code immediately
-2. Rotate the exposed credential (even if it was just a test key)
+If a real secret is found:
+1. Remove it from the code immediately
+2. Rotate the exposed credential — even if it was a test key
 3. Regenerate the baseline: `detect-secrets scan > .secrets.baseline`
 4. Commit the new baseline
 
-## Gate 4: Node.js Dependency Audit
+## Gate 3: Node.js Dependency Audit
 ```bash
 pnpm audit --audit-level=high
 ```
 **Gate:** Zero HIGH or CRITICAL vulnerabilities.
 
-If vulnerabilities found:
+If vulnerabilities appear:
 ```bash
 # Try automatic fix first
-pnpm audit --fix
+pnpm update --latest {package}
+pnpm audit --audit-level=high
 
-# If that breaks things, check the advisory:
-pnpm audit --json | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for adv in data.get('advisories', {}).values():
-    if adv['severity'] in ('high', 'critical'):
-        print(f\"{adv['severity'].upper()}: {adv['title']} — {adv['module_name']} {adv['findings'][0]['version']}\")
-        print(f\"  Fix: {adv['recommendation']}\")
-"
+# If no fix is available, check the advisory
+pnpm audit --json | jq '.advisories[] | select(.severity == "high" or .severity == "critical")'
 ```
 
-## Gate 5: Container Scan (when Docker images are built)
+If no upstream fix exists, document in the PR and file a ticket with a remediation deadline. security-lead must sign off.
+
+## Gate 4: Typecheck + Lint (defense in depth)
+Not strictly "security," but catches many classes of unsafe patterns (`any`, missing null checks) that lead to security bugs.
+
 ```bash
-# Scan API image
-trivy image --severity HIGH,CRITICAL --exit-code 1 creator-os-api:$(git rev-parse --short HEAD)
-
-# Scan orchestrator image
-trivy image --severity HIGH,CRITICAL --exit-code 1 creator-os-orchestrator:$(git rev-parse --short HEAD)
+pnpm typecheck
+pnpm lint
 ```
-**Gate:** Zero CRITICAL CVEs in base images or dependencies.
+**Gate:** Zero errors.
+
+## Gate 5: Custom Grep Checks
+Lightweight safety-net checks for bendro-specific invariants:
+
+```bash
+# No userId trusted from request body
+grep -rn "body\.userId\|query\.userId\|params\.userId" src/app/api/ --include="*.ts"
+
+# No sql.raw with user input (should be zero, or each one has a justifying comment)
+grep -rn "sql\.raw(" src/ --include="*.ts"
+
+# No env reads outside src/config/env.ts
+grep -rn "process\.env\." src/ --include="*.ts" --include="*.tsx" | grep -v "src/config/env.ts"
+
+# No MediaPipe / VRM imports outside the pose boundary
+grep -rn "@mediapipe/\|kalidokit\|@pixiv/three-vrm" src/ --include="*.ts" --include="*.tsx" | \
+  grep -v "src/lib/pose/\|src/app/player/camera/_components/"
+
+# No Stripe SDK outside src/services/billing.ts
+grep -rn "from 'stripe'" src/ --include="*.ts" | grep -v "src/services/billing.ts"
+```
+**Gate:** Each command outputs zero results (or each hit has a `// nosec: <reason>` comment).
+
+## Gate 6: Container Scan (future — when/if bendro ships a container)
+Bendro deploys to Vercel today, so there is no container scan. If a self-hosted container target is added:
+```bash
+trivy image --severity HIGH,CRITICAL --exit-code 1 bendro:$(git rev-parse --short HEAD)
+```
 
 ## Interpreting Results
 
 | Severity | Action |
 |----------|--------|
-| CRITICAL | BLOCK PR immediately. Security-lead must review and approve remediation. |
-| HIGH | BLOCK PR. Fix before merge. Document in PR if using accepted risk. |
-| MEDIUM | Note in PR. Create ticket. Remediate in next sprint. |
-| LOW | Note in PR. Remediate at convenience. |
+| CRITICAL | BLOCK PR. security-lead must review and approve remediation. |
+| HIGH     | BLOCK PR. Fix before merge, or document accepted risk with ticket + deadline. |
+| MEDIUM   | Note in PR. Create follow-up ticket. Remediate within next two sprints. |
+| LOW      | Note in PR. Remediate at convenience. |
 
 ## Recording Results
-After running all gates, append to docs/EXECUTION_LOG.md:
+After running all gates, append to `docs/EXECUTION_LOG.md`:
 ```
-[{timestamp}] Security scan: Bandit={N high/crit}, Semgrep={N findings}, Secrets={N new}, npm audit={N high/crit} | Result: PASS/FAIL
+[{timestamp}] Security scan: Semgrep={N}, Secrets={N new}, pnpm audit={N high/crit}, custom greps={N hits} | Result: PASS/FAIL
 ```
 
-## Full Makefile Command
+## One-Liner
 ```bash
-make security-scan
-# This runs all gates in sequence and reports combined result
+pnpm typecheck && pnpm lint && \
+  semgrep --config=auto --error src/ && \
+  detect-secrets scan --baseline .secrets.baseline && \
+  pnpm audit --audit-level=high && \
+  echo "SECURITY SCAN: PASS"
 ```
