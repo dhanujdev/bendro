@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { StretchSchema, BodyAreaSchema, IntensitySchema } from "@/types"
-import { MOCK_STRETCHES } from "@/lib/mock-data"
+import { listStretches } from "@/lib/data"
 
 const ListQuerySchema = z.object({
   bodyArea: BodyAreaSchema.optional(),
@@ -21,17 +21,9 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const { bodyArea, intensity, limit, offset } = query.data
-
-  let stretches = [...MOCK_STRETCHES]
-  if (bodyArea !== undefined)
-    stretches = stretches.filter((s) => s.bodyAreas.includes(bodyArea))
-  if (intensity !== undefined)
-    stretches = stretches.filter((s) => s.intensity === intensity)
-
-  const total = stretches.length
-  const page = stretches.slice(offset, offset + limit)
-  const validated = z.array(StretchSchema).parse(page)
+  const { limit, offset } = query.data
+  const { data, total } = await listStretches(query.data)
+  const validated = z.array(StretchSchema).parse(data)
 
   return Response.json({ data: validated, total, limit, offset })
 }
