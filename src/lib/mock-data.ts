@@ -412,6 +412,10 @@ export function updateMockSession(
   return sessionStore[idx]
 }
 
+export function findMockSession(id: string): SessionType | null {
+  return sessionStore.find((s) => s.id === id) ?? null
+}
+
 // ─── Progress ────────────────────────────────────────────────────────────────
 
 export interface MockProgress {

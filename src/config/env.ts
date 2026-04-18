@@ -27,9 +27,20 @@ const envSchema = z.object({
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: isProd ? prodRequired : devOptional,
   STRIPE_PREMIUM_PRICE_ID: isProd ? prodRequired : devOptional,
 
-  // Auth
+  // Auth (Auth.js v5 — see ADR-0004)
+  // Auth.js v5 reads AUTH_SECRET (not NEXTAUTH_SECRET). We keep NEXTAUTH_SECRET
+  // for backwards compat with existing deploy docs; auth.ts passes whichever
+  // is set to `secret`.
   NEXTAUTH_SECRET: isProd ? prodRequired : devOptional,
   NEXTAUTH_URL: z.string().url().default("http://localhost:3000"),
+  AUTH_SECRET: isProd ? prodRequired : devOptional,
+  AUTH_URL: z.string().url().default("http://localhost:3000"),
+
+  // Auth providers
+  AUTH_GOOGLE_ID: devOptional,
+  AUTH_GOOGLE_SECRET: devOptional,
+  AUTH_RESEND_KEY: devOptional,
+  AUTH_EMAIL_FROM: devOptional,
 
   // AI (optional everywhere)
   OPENAI_API_KEY: z.string().optional(),

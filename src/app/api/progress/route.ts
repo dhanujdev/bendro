@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { getProgress } from "@/lib/data"
+import { auth } from "@/lib/auth"
 import { ERROR_CODES, errorResponse, jsonResponse } from "@/lib/http"
 
 const QuerySchema = z.object({
-  userId: z.string().uuid().optional(),
   days: z.coerce.number().int().positive().max(365).default(30),
 })
 
@@ -28,6 +28,14 @@ const ProgressResponseSchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  const session = await auth()
+  if (!session?.user?.id) {
+    return errorResponse(
+      ERROR_CODES.UNAUTHENTICATED,
+      "Sign in to view progress",
+    )
+  }
+
   const query = QuerySchema.safeParse(
     Object.fromEntries(request.nextUrl.searchParams),
   )
@@ -37,7 +45,10 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  const progress = await getProgress(query.data)
+  const progress = await getProgress({
+    userId: session.user.id,
+    days: query.data.days,
+  })
   const validated = ProgressResponseSchema.parse(progress)
   return jsonResponse({ data: validated })
 }

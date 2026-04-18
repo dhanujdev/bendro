@@ -20,6 +20,20 @@ export const SessionSchema = z.object({
 });
 export type SessionType = z.infer<typeof SessionSchema>;
 
+/**
+ * Wire schema: what POST /api/sessions accepts in the request body.
+ * userId is never accepted from the body — it is resolved server-side
+ * from the auth session (ADR-0004).
+ */
+export const StartSessionBodySchema = z.object({
+  routineId: z.string().uuid(),
+});
+export type StartSessionBody = z.infer<typeof StartSessionBodySchema>;
+
+/**
+ * Service schema: what the startSession service function accepts. userId
+ * is required here and is filled in by the route handler from auth().
+ */
 export const StartSessionSchema = z.object({
   userId: z.string().uuid(),
   routineId: z.string().uuid(),

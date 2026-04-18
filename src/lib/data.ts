@@ -28,6 +28,7 @@ import {
   findRoutineByIdOrSlug as findMockRoutineByIdOrSlug,
   createMockSession,
   updateMockSession,
+  findMockSession,
   type MockProgress,
 } from "@/lib/mock-data"
 
@@ -241,6 +242,20 @@ export async function startSession(input: StartSession): Promise<SessionType> {
       return row as SessionType
     },
     () => createMockSession(input),
+  )
+}
+
+export async function getSessionById(
+  id: string,
+): Promise<SessionType | null> {
+  return withFallback(
+    "getSessionById",
+    async () => {
+      const { getSessionById: dbGet } = await import("@/services/sessions")
+      const row = await dbGet(id)
+      return (row as SessionType | undefined) ?? null
+    },
+    () => findMockSession(id),
   )
 }
 

@@ -4,11 +4,19 @@ vi.mock("@/lib/data", () => ({
   getProgress: vi.fn(),
 }));
 
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
+}));
+
 import { GET } from "@/app/api/progress/route";
 import * as dataModule from "@/lib/data";
+import * as authModule from "@/lib/auth";
 import { NextRequest } from "next/server";
 
 const mockGet = dataModule.getProgress as ReturnType<typeof vi.fn>;
+const mockAuth = authModule.auth as unknown as ReturnType<typeof vi.fn>;
+
+const USER_ID = "00000000-0000-4000-8000-000000000001";
 
 const PROGRESS = {
   currentStreak: 3,
@@ -27,12 +35,32 @@ const PROGRESS = {
   })),
 };
 
+function asAuthed() {
+  mockAuth.mockResolvedValue({
+    user: { id: USER_ID, email: "u@example.com", name: null, image: null },
+    expires: new Date(Date.now() + 3600_000).toISOString(),
+  });
+}
+
+function asGuest() {
+  mockAuth.mockResolvedValue(null);
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
 });
 
 describe("GET /api/progress", () => {
-  it("returns the progress payload on happy path", async () => {
+  it("returns UNAUTHENTICATED when there is no session", async () => {
+    asGuest();
+    const res = await GET(new NextRequest("http://localhost/api/progress"));
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("returns the progress payload when signed in", async () => {
+    asAuthed();
     mockGet.mockResolvedValueOnce(PROGRESS);
     const res = await GET(new NextRequest("http://localhost/api/progress"));
     expect(res.status).toBe(200);
@@ -41,31 +69,23 @@ describe("GET /api/progress", () => {
     expect(body.data.history.length).toBe(7);
   });
 
-  it("passes userId + days query to the data layer", async () => {
+  it("passes the session userId (not a body/query userId) to the data layer", async () => {
+    asAuthed();
     mockGet.mockResolvedValueOnce({ ...PROGRESS, history: [] });
     await GET(
       new NextRequest(
-        "http://localhost/api/progress?userId=00000000-0000-4000-8000-000000000001&days=14",
+        // Any userId in the query string is ignored — we now source from auth.
+        "http://localhost/api/progress?userId=99999999-9999-4999-8999-999999999999&days=14",
       ),
     );
-    expect(mockGet).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: "00000000-0000-4000-8000-000000000001",
-        days: 14,
-      }),
-    );
-  });
-
-  it("returns VALIDATION_ERROR on invalid userId", async () => {
-    const res = await GET(
-      new NextRequest("http://localhost/api/progress?userId=not-a-uuid"),
-    );
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error.code).toBe("VALIDATION_ERROR");
+    expect(mockGet).toHaveBeenCalledWith({
+      userId: USER_ID,
+      days: 14,
+    });
   });
 
   it("returns VALIDATION_ERROR when days > 365", async () => {
+    asAuthed();
     const res = await GET(
       new NextRequest("http://localhost/api/progress?days=9999"),
     );
@@ -75,8 +95,11 @@ describe("GET /api/progress", () => {
   });
 
   it("defaults days to 30 when omitted", async () => {
+    asAuthed();
     mockGet.mockResolvedValueOnce({ ...PROGRESS, history: [] });
     await GET(new NextRequest("http://localhost/api/progress"));
-    expect(mockGet).toHaveBeenCalledWith(expect.objectContaining({ days: 30 }));
+    expect(mockGet).toHaveBeenCalledWith(
+      expect.objectContaining({ days: 30, userId: USER_ID }),
+    );
   });
 });

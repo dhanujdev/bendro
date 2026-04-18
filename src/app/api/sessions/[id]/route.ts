@@ -1,6 +1,7 @@
 import { z } from "zod"
 import { SessionSchema, PainFeedbackSchema } from "@/types"
-import { updateSession } from "@/lib/data"
+import { getSessionById, updateSession } from "@/lib/data"
+import { auth } from "@/lib/auth"
 import {
   ERROR_CODES,
   errorResponse,
@@ -20,6 +21,14 @@ export async function PATCH(
   request: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
+  const authSession = await auth()
+  if (!authSession?.user?.id) {
+    return errorResponse(
+      ERROR_CODES.UNAUTHENTICATED,
+      "Sign in to update a session",
+    )
+  }
+
   const { id } = await ctx.params
 
   const body = await readJsonBody(request)
@@ -32,11 +41,19 @@ export async function PATCH(
     })
   }
 
-  const session = await updateSession(id, parsed.data)
-  if (!session) {
+  const existing = await getSessionById(id)
+  // Return NOT_FOUND both when the session doesn't exist AND when it belongs
+  // to another user — avoids leaking whether a session id is valid.
+  // (SECURITY_RULES.md §Authorization: cross-tenant access returns 404.)
+  if (!existing || existing.userId !== authSession.user.id) {
     return errorResponse(ERROR_CODES.NOT_FOUND, "Session not found")
   }
 
-  const validated = SessionSchema.parse(session)
+  const updated = await updateSession(id, parsed.data)
+  if (!updated) {
+    return errorResponse(ERROR_CODES.NOT_FOUND, "Session not found")
+  }
+
+  const validated = SessionSchema.parse(updated)
   return jsonResponse({ data: validated })
 }

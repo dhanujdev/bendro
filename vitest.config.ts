@@ -16,6 +16,11 @@ export default defineConfig({
         "src/lib/pose/**",
         "src/lib/disclaimers.ts",
         "src/lib/utils.ts",
+        // auth.ts is an Auth.js v5 config surface whose only behavior is
+        // wiring NextAuth() + DrizzleAdapter. It is exercised at integration
+        // boundaries (the sign-in flow in Playwright, Phase 14); unit tests
+        // would mock everything it composes and prove nothing.
+        "src/lib/auth.ts",
       ],
       thresholds: {
         lines: 70,

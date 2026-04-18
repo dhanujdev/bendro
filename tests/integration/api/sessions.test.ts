@@ -3,18 +3,30 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/lib/data", () => ({
   startSession: vi.fn(),
   updateSession: vi.fn(),
+  getSessionById: vi.fn(),
+}));
+
+// Mock the auth module so tests don't need Next.js runtime to resolve
+// next-auth's sub-module imports. Each test sets the return value it needs.
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn(),
 }));
 
 import { POST } from "@/app/api/sessions/route";
 import { PATCH } from "@/app/api/sessions/[id]/route";
 import * as dataModule from "@/lib/data";
+import * as authModule from "@/lib/auth";
 
 const mockStart = dataModule.startSession as ReturnType<typeof vi.fn>;
 const mockUpdate = dataModule.updateSession as ReturnType<typeof vi.fn>;
+const mockGetSession = dataModule.getSessionById as ReturnType<typeof vi.fn>;
+const mockAuth = authModule.auth as unknown as ReturnType<typeof vi.fn>;
+
+const USER_ID = "00000000-0000-4000-8000-000000000001";
 
 const BASE_SESSION = {
   id: "33333333-3333-4333-8333-333333333333",
-  userId: "00000000-0000-4000-8000-000000000001",
+  userId: USER_ID,
   routineId: "22222222-2222-4000-8000-000000000001",
   startedAt: new Date("2024-01-01T00:00:00Z"),
   completedAt: null,
@@ -33,25 +45,58 @@ function jsonRequest(url: string, body: unknown, method = "POST"): Request {
   });
 }
 
+function asAuthed() {
+  mockAuth.mockResolvedValue({
+    user: { id: USER_ID, email: "u@example.com", name: null, image: null },
+    expires: new Date(Date.now() + 3600_000).toISOString(),
+  });
+}
+
+function asGuest() {
+  mockAuth.mockResolvedValue(null);
+}
+
 beforeEach(() => {
   vi.resetAllMocks();
 });
 
 describe("POST /api/sessions", () => {
-  it("creates a session and returns 201", async () => {
-    mockStart.mockResolvedValueOnce(BASE_SESSION);
+  it("returns UNAUTHENTICATED when there is no session", async () => {
+    asGuest();
     const res = await POST(
       jsonRequest("http://localhost/api/sessions", {
-        userId: BASE_SESSION.userId,
         routineId: BASE_SESSION.routineId,
       }),
     );
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("creates a session using the session userId, not the body", async () => {
+    asAuthed();
+    mockStart.mockResolvedValueOnce(BASE_SESSION);
+
+    const res = await POST(
+      jsonRequest("http://localhost/api/sessions", {
+        // Attempt to spoof: userId in body should be ignored.
+        userId: "99999999-9999-4999-8999-999999999999",
+        routineId: BASE_SESSION.routineId,
+      }),
+    );
+
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.data.id).toBe(BASE_SESSION.id);
+    // Service was called with the auth-derived userId, not the body-supplied one.
+    expect(mockStart).toHaveBeenCalledWith({
+      userId: USER_ID,
+      routineId: BASE_SESSION.routineId,
+    });
   });
 
-  it("returns INVALID_JSON for malformed body", async () => {
+  it("returns INVALID_JSON for malformed body (even when authed)", async () => {
+    asAuthed();
     const res = await POST(
       new Request("http://localhost/api/sessions", {
         method: "POST",
@@ -64,12 +109,10 @@ describe("POST /api/sessions", () => {
     expect(body.error.code).toBe("INVALID_JSON");
   });
 
-  it("returns VALIDATION_ERROR when userId isn't a UUID", async () => {
+  it("returns VALIDATION_ERROR when routineId is missing", async () => {
+    asAuthed();
     const res = await POST(
-      jsonRequest("http://localhost/api/sessions", {
-        userId: "not-a-uuid",
-        routineId: BASE_SESSION.routineId,
-      }),
+      jsonRequest("http://localhost/api/sessions", {}),
     );
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -82,7 +125,24 @@ describe("PATCH /api/sessions/[id]", () => {
     return { params: Promise.resolve({ id }) };
   }
 
-  it("updates a session and returns 200", async () => {
+  it("returns UNAUTHENTICATED without a session", async () => {
+    asGuest();
+    const res = await PATCH(
+      jsonRequest(
+        `http://localhost/api/sessions/${BASE_SESSION.id}`,
+        { durationDoneSec: 1 },
+        "PATCH",
+      ),
+      patchCtx(BASE_SESSION.id),
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error.code).toBe("UNAUTHENTICATED");
+  });
+
+  it("updates a session and returns 200 when owner matches", async () => {
+    asAuthed();
+    mockGetSession.mockResolvedValueOnce(BASE_SESSION);
     mockUpdate.mockResolvedValueOnce({
       ...BASE_SESSION,
       durationDoneSec: 120,
@@ -101,8 +161,30 @@ describe("PATCH /api/sessions/[id]", () => {
     expect(body.data.durationDoneSec).toBe(120);
   });
 
+  it("returns NOT_FOUND when the session belongs to another user", async () => {
+    asAuthed();
+    mockGetSession.mockResolvedValueOnce({
+      ...BASE_SESSION,
+      userId: "11111111-1111-4111-8111-111111111111",
+    });
+    const res = await PATCH(
+      jsonRequest(
+        `http://localhost/api/sessions/${BASE_SESSION.id}`,
+        { durationDoneSec: 1 },
+        "PATCH",
+      ),
+      patchCtx(BASE_SESSION.id),
+    );
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error.code).toBe("NOT_FOUND");
+    // We did not call update for a stranger's session.
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
   it("returns NOT_FOUND when the session doesn't exist", async () => {
-    mockUpdate.mockResolvedValueOnce(null);
+    asAuthed();
+    mockGetSession.mockResolvedValueOnce(null);
     const res = await PATCH(
       jsonRequest(
         "http://localhost/api/sessions/missing",
@@ -117,6 +199,7 @@ describe("PATCH /api/sessions/[id]", () => {
   });
 
   it("returns INVALID_JSON on broken body", async () => {
+    asAuthed();
     const res = await PATCH(
       new Request(`http://localhost/api/sessions/${BASE_SESSION.id}`, {
         method: "PATCH",
@@ -131,6 +214,7 @@ describe("PATCH /api/sessions/[id]", () => {
   });
 
   it("returns VALIDATION_ERROR when completionPct > 100", async () => {
+    asAuthed();
     const res = await PATCH(
       jsonRequest(
         `http://localhost/api/sessions/${BASE_SESSION.id}`,

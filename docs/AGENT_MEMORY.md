@@ -4,21 +4,25 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (session 1 — framework port)
+Last updated: 2026-04-18 (Phase 3 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 0 — Foundation & Framework Port** (in progress, ~85% complete)
+**Phase 3 — Auth (NextAuth)** closed on 2026-04-18. See
+`.claude/checkpoints/COMPLETED/phase-3.md`.
 
-Remaining Phase 0 work:
-- Write initial ADRs (0001/0002/0003)
-- Scaffold `docs/specs/openapi/v1/bendro.yaml`
-- Write `docs/STANDARDS.md`, `docs/PRD.md`, `docs/BACKLOG.md`
-- Final commit closing out the port
+Phases 0–3 all closed:
+- Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
+- Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
+- Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
+- Phase 3 — Auth / NextAuth (`.claude/checkpoints/COMPLETED/phase-3.md`)
 
-Next phase: **Phase 1 — Test Coverage Baseline** (qa-lead).
+Next phase: **Phase 4 — Player Stability** (frontend-lead).
+Top backlog items: camera permission flow + error recovery, MediaPipe lazy
+loading behind an error boundary, VRM smoothness / jank budget, Playwright
+smoke test covering the player route without a live camera.
 
 ---
 
@@ -32,7 +36,7 @@ Next phase: **Phase 1 — Test Coverage Baseline** (qa-lead).
 | ORM | Drizzle + drizzle-kit (migrations in `src/db/migrations/`) |
 | Data adapter | `src/lib/data.ts` — single switch between mock and DB |
 | State | Zustand (client UI), TanStack Query (server-state cache) |
-| Auth | NextAuth.js (planned — Phase 3; currently none) |
+| Auth | Auth.js v5 (`next-auth@5.0.0-beta.31`) + `@auth/drizzle-adapter`, database sessions, Google OAuth + Resend magic-link (Phase 3) |
 | Billing | Stripe (planned — Phase 9; currently stub) |
 | Pose / Avatar | MediaPipe Tasks Vision → Kalidokit → @pixiv/three-vrm on @react-three/fiber |
 | Validation | Zod at every route boundary |
@@ -105,6 +109,9 @@ Highlights:
 5. **Zod at every route boundary.** Body / query / path params validated before service call.
 6. **Health rules replace legal rules.** `.claude/rules/HEALTH_RULES.md` governs disclaimers, pain feedback, pre-existing-condition gating, camera privacy.
 7. **16-phase model (0–15).** See `docs/PHASES.md`.
+8. **Auth.js v5 + Drizzle adapter, database sessions.** `src/lib/auth.ts` is the only file that imports `next-auth` (parallel to the Stripe-only-in-`services/billing.ts` rule). See `docs/ADR/ADR-0004-authjs-v5-drizzle.md`.
+9. **`userId` is server-sourced.** Authenticated routes read `userId` from `auth()` and ignore any value in the request body or query string. Cross-tenant access returns `404 NOT_FOUND`, not `403`, to prevent session-id enumeration.
+10. **Auth sessions table renamed to `auth_sessions`** to avoid collision with workout `sessions`. Passed to `DrizzleAdapter` via `sessionsTable: authSessions`. (D-006)
 
 ---
 

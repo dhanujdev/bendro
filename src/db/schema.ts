@@ -10,8 +10,10 @@ import {
   real,
   index,
   uniqueIndex,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import type { AdapterAccountType } from "next-auth/adapters";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -136,6 +138,12 @@ export const users = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     email: text("email").notNull().unique(),
+    // NextAuth-adapter columns (ADR-0004). Nullable because magic-link
+    // flows create a user row before the user has filled in a profile.
+    name: text("name"),
+    emailVerified: timestamp("email_verified", { mode: "date" }),
+    image: text("image"),
+    // Domain columns
     displayName: text("display_name"),
     goals: jsonb("goals").$type<string[]>().notNull().default([]),
     focusAreas: jsonb("focus_areas").$type<string[]>().notNull().default([]),
@@ -153,6 +161,57 @@ export const users = pgTable(
     index("users_email_idx").on(t.email),
     index("users_stripe_idx").on(t.stripeCustomerId),
   ]
+);
+
+// ─── NextAuth (Auth.js v5) tables — see ADR-0004 ──────────────────────────────
+//
+// Drizzle adapter expects: users, accounts, sessions, verificationTokens.
+// We extended the existing `users` above. The session table is named
+// `auth_sessions` to avoid collision with the workout `sessions` table (D-006).
+
+export const accounts = pgTable(
+  "accounts",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").$type<AdapterAccountType>().notNull(),
+    provider: text("provider").notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    refresh_token: text("refresh_token"),
+    access_token: text("access_token"),
+    expires_at: integer("expires_at"),
+    token_type: text("token_type"),
+    scope: text("scope"),
+    id_token: text("id_token"),
+    session_state: text("session_state"),
+  },
+  (t) => [
+    primaryKey({ columns: [t.provider, t.providerAccountId] }),
+    index("accounts_user_idx").on(t.userId),
+  ],
+);
+
+export const authSessions = pgTable(
+  "auth_sessions",
+  {
+    sessionToken: text("session_token").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expires: timestamp("expires", { mode: "date" }).notNull(),
+  },
+  (t) => [index("auth_sessions_user_idx").on(t.userId)],
+);
+
+export const verificationTokens = pgTable(
+  "verification_tokens",
+  {
+    identifier: text("identifier").notNull(),
+    token: text("token").notNull(),
+    expires: timestamp("expires", { mode: "date" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.identifier, t.token] })],
 );
 
 export const sessions = pgTable(
@@ -232,6 +291,22 @@ export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
   favorites: many(favorites),
   streaks: many(streaks),
+  accounts: many(accounts),
+  authSessions: many(authSessions),
+}));
+
+export const accountsRelations = relations(accounts, ({ one }) => ({
+  user: one(users, {
+    fields: [accounts.userId],
+    references: [users.id],
+  }),
+}));
+
+export const authSessionsRelations = relations(authSessions, ({ one }) => ({
+  user: one(users, {
+    fields: [authSessions.userId],
+    references: [users.id],
+  }),
 }));
 
 export const routinesRelations = relations(routines, ({ one, many }) => ({
@@ -302,3 +377,9 @@ export type Favorite = typeof favorites.$inferSelect;
 export type NewFavorite = typeof favorites.$inferInsert;
 export type Streak = typeof streaks.$inferSelect;
 export type NewStreak = typeof streaks.$inferInsert;
+export type Account = typeof accounts.$inferSelect;
+export type NewAccount = typeof accounts.$inferInsert;
+export type AuthSession = typeof authSessions.$inferSelect;
+export type NewAuthSession = typeof authSessions.$inferInsert;
+export type VerificationToken = typeof verificationTokens.$inferSelect;
+export type NewVerificationToken = typeof verificationTokens.$inferInsert;

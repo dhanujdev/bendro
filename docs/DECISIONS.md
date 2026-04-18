@@ -41,6 +41,22 @@ Last updated: 2026-04-18
 - **Why:** High-stakes decisions (architecture, security, PR approval) benefit from Opus quality. Implementation is routine enough that the default model is adequate.
 - **Consequence:** Cost stays proportional to risk. Only 4 Opus roles in bendro vs. 5 in Creator OS.
 
+## D-005 — Auth.js v5 with database sessions; see ADR-0004
+- **Date:** 2026-04-18 (session 2, Phase 3)
+- **Decided by:** security-lead, backend-lead
+- **Context:** Phase 3 gate requires server-owned `userId`. Every mutation route currently reads userId from request body/query.
+- **Choice:** Auth.js v5 (`next-auth@beta`) + Drizzle adapter + database session strategy. Providers: Resend magic link (primary) + Google OAuth (secondary). Extend existing `users` table with `name`, `emailVerified`, `image` rather than using Auth.js-owned user table.
+- **Why:** DB sessions give free revocation, single source of truth for users, no password custody. Auth.js v5 is the App-Router-native version. See ADR-0004 for the full rationale and trade-offs.
+- **Consequence:** `src/lib/auth.ts` is the sole `next-auth` importer (parallel to the `stripe` rule). `pre-pr-gate.py` Gate 4 will block any PR that reintroduces body-sourced userId. Three new tables (accounts, auth_sessions, verification_tokens) and three new columns on users.
+
+## D-006 — NextAuth session table named `auth_sessions` to avoid collision
+- **Date:** 2026-04-18 (session 2, Phase 3)
+- **Decided by:** backend-lead
+- **Context:** Bendro already has a `sessions` table for workout sessions. Auth.js Drizzle adapter defaults to a `session` (singular) table, which is both confusing and easy to swap by accident.
+- **Choice:** Name the Auth.js sessions table `auth_sessions` (plural, prefixed) in DB and Drizzle export. Configure the adapter to use this table via `sessionsTable:` override.
+- **Why:** Explicit naming prevents a Phase 8 bug where a query accidentally selects from the wrong `sessions` table. The cost — one line of adapter config — is trivial.
+- **Consequence:** Every future reference to the NextAuth session table uses the `auth_sessions` name. Workout session code is unchanged.
+
 ---
 
 ## Format for New Entries
