@@ -2,9 +2,25 @@
  * VRM driver: translate MediaPipe Pose Landmarker results into VRM humanoid
  * bone rotations via Kalidokit.
  *
- * This module isolates all Kalidokit usage so we can swap solvers later
- * without touching the R3F component. Kalidokit is deprecated upstream but
- * still functional in 2026 for the MediaPipe pose topology.
+ * ─── Swap plan ────────────────────────────────────────────────────────────
+ * Kalidokit is deprecated upstream (the author hands the problem back to
+ * Google, which is expected to ship a first-party MediaPipe avatar solver).
+ * Every Kalidokit touchpoint lives in this file so the migration is a
+ * single-module change:
+ *
+ *   1. Replace the `import * as Kalidokit` line with the new solver.
+ *   2. Rewrite `solvePose()` to return the same `Rig` shape we consume in
+ *      `applyToVrm()` — or update `applyToVrm()` if the new solver's output
+ *      is already VRM-compatible (e.g. named bone quaternions).
+ *   3. Rebuild. `avatar-view.tsx` imports this module as a contract, it
+ *      doesn't know or care which solver is underneath.
+ *
+ * Candidate replacements (2026 options):
+ *   - MediaPipe's own BlazePose → bone solver when Google ships it.
+ *   - Three.js IK (CCD / FABRIK) driven directly by world landmarks.
+ *   - Custom quaternion mapping (simpler joints, no external dep).
+ *
+ * Until then, Kalidokit works fine against MediaPipe Tasks Vision output.
  */
 
 import * as Kalidokit from "kalidokit"

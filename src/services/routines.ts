@@ -8,7 +8,7 @@ export async function getRoutineById(id: string) {
     where: eq(routines.id, id),
     with: {
       routineStretches: {
-        orderBy: (rs: { orderIndex: unknown }, { asc }: { asc: (col: unknown) => unknown }) => [asc(rs.orderIndex)],
+        orderBy: (rs, { asc }) => [asc(rs.orderIndex)],
         with: { stretch: true },
       },
     },
@@ -21,7 +21,7 @@ export async function getRoutineBySlug(slug: string) {
     where: eq(routines.slug, slug),
     with: {
       routineStretches: {
-        orderBy: (rs: { orderIndex: unknown }, { asc }: { asc: (col: unknown) => unknown }) => [asc(rs.orderIndex)],
+        orderBy: (rs, { asc }) => [asc(rs.orderIndex)],
         with: { stretch: true },
       },
     },

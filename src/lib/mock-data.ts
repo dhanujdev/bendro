@@ -276,8 +276,13 @@ function rs(
   durationSec?: number,
 ) {
   const s = byId(stretchId)
+  // Deterministic UUIDv4-shaped id: "44444444-4444-4rrr-8000-oooooooooooo"
+  // where rrr = routineId byte, ooo = order. Valid hex, valid UUID layout.
+  const routineByte = routineId.slice(0, 2)
+  const orderHex = order.toString(16).padStart(12, "0")
+  const id = `44444444-4444-4${routineByte}0-8000-${orderHex}`
   return {
-    id: `${routineId.slice(0, 8)}-rs-${order}`.padEnd(36, "0"),
+    id,
     routineId,
     stretchId,
     orderIndex: order,

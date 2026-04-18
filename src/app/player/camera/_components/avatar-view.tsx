@@ -7,12 +7,16 @@
  * which both touch `window`. It is loaded via `next/dynamic({ ssr: false })`
  * from `camera-pose-client.tsx`.
  *
- * VRM source: the default URL below points to jsDelivr's mirror of the
- * `pixiv/three-vrm` repo's example model. That repository is MIT-licensed
- * and the sample VRM is explicitly shipped as part of that MIT-licensed
- * test suite for three-vrm developers to build against. If the remote is
- * unavailable the component falls back to a procedural stick-figure mesh
- * driven by the same rig data, so the page still renders.
+ * VRM asset
+ * ─────────
+ * Primary: bundled at `public/avatars/default.vrm`. Sourced from
+ *   https://github.com/pixiv/three-vrm/tree/main/packages/three-vrm/examples/models
+ * which is MIT-licensed. The asset is `VRM1_Constraint_Twist_Sample.vrm`,
+ * the three-vrm test avatar. Ships with the repo so the avatar works offline
+ * and survives any upstream CDN reshuffle.
+ *
+ * Fallback: if the VRM load throws, `<FallbackRig />` renders a simple
+ * primitive-mesh body so the camera page never crashes on avatar mode.
  */
 
 import { Suspense, useRef, useState, type RefObject } from "react"
@@ -25,8 +29,12 @@ import { VRMLoaderPlugin, type VRM } from "@pixiv/three-vrm"
 import type { Landmark } from "@/lib/pose/angles"
 import { applyToVrm, solvePose } from "@/lib/pose/vrm-driver"
 
-const DEFAULT_VRM_URL =
-  "https://cdn.jsdelivr.net/gh/pixiv/three-vrm@v3/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm"
+// Local-first: ships with the app so camera mode works offline (PWA) and
+// doesn't depend on jsDelivr resolving a GitHub tag. If you want to avoid
+// the 10MB commit, delete public/avatars/default.vrm and replace with a
+// commit-SHA-pinned CDN URL, e.g.
+//   "https://cdn.jsdelivr.net/gh/pixiv/three-vrm@<sha>/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm"
+const DEFAULT_VRM_URL = "/avatars/default.vrm"
 
 interface LandmarksRef {
   landmarks3D: Landmark[] | null

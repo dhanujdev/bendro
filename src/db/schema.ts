@@ -11,6 +11,7 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -218,6 +219,72 @@ export const streaks = pgTable(
   },
   (t) => [index("streaks_user_idx").on(t.userId)]
 );
+
+// ─── Relations ────────────────────────────────────────────────────────────────
+//
+// Declared explicitly so Drizzle's relational query API (`db.query.X.findFirst({
+// with: { … } })`) works at runtime. Without these, queries like
+//   db.query.routines.findFirst({ with: { routineStretches: { with: { stretch } } } })
+// throw: "No relation found for routineStretches".
+
+export const usersRelations = relations(users, ({ many }) => ({
+  routines: many(routines),
+  sessions: many(sessions),
+  favorites: many(favorites),
+  streaks: many(streaks),
+}));
+
+export const routinesRelations = relations(routines, ({ one, many }) => ({
+  owner: one(users, {
+    fields: [routines.ownerId],
+    references: [users.id],
+  }),
+  routineStretches: many(routineStretches),
+  sessions: many(sessions),
+}));
+
+export const routineStretchesRelations = relations(
+  routineStretches,
+  ({ one }) => ({
+    routine: one(routines, {
+      fields: [routineStretches.routineId],
+      references: [routines.id],
+    }),
+    stretch: one(stretches, {
+      fields: [routineStretches.stretchId],
+      references: [stretches.id],
+    }),
+  })
+);
+
+export const stretchesRelations = relations(stretches, ({ many }) => ({
+  routineStretches: many(routineStretches),
+}));
+
+export const sessionsRelations = relations(sessions, ({ one }) => ({
+  user: one(users, {
+    fields: [sessions.userId],
+    references: [users.id],
+  }),
+  routine: one(routines, {
+    fields: [sessions.routineId],
+    references: [routines.id],
+  }),
+}));
+
+export const favoritesRelations = relations(favorites, ({ one }) => ({
+  user: one(users, {
+    fields: [favorites.userId],
+    references: [users.id],
+  }),
+}));
+
+export const streaksRelations = relations(streaks, ({ one }) => ({
+  user: one(users, {
+    fields: [streaks.userId],
+    references: [users.id],
+  }),
+}));
 
 // ─── Types inferred from schema ───────────────────────────────────────────────
 
