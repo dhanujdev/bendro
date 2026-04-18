@@ -1,6 +1,9 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { Play, Flame, Clock, Zap, Camera } from "lucide-react"
 import { MOCK_ROUTINES, GOAL_META } from "@/lib/mock-data"
+import { auth } from "@/lib/auth"
+import { getProgress } from "@/lib/data"
 
 const FEATURED_SLUGS = [
   "morning-wake-up-flow",
@@ -8,13 +11,26 @@ const FEATURED_SLUGS = [
   "bedtime-wind-down",
 ]
 
-export default function HomePage() {
+export default async function HomePage() {
+  const authSession = await auth()
+  if (!authSession?.user?.id) {
+    redirect("/signin?callbackUrl=/home")
+  }
+
+  const progress = await getProgress({
+    userId: authSession.user.id,
+    days: 30,
+  })
+
   const featured = FEATURED_SLUGS
     .map((slug) => MOCK_ROUTINES.find((r) => r.slug === slug))
     .filter((r): r is NonNullable<typeof r> => !!r)
 
   return (
-    <div className="flex flex-col min-h-full px-4 py-6 max-w-lg mx-auto">
+    <div
+      className="flex flex-col min-h-full px-4 py-6 max-w-lg mx-auto"
+      data-testid="home-page"
+    >
       <header className="mb-8">
         <p className="text-white/50 text-sm">Good morning</p>
         <h1 className="text-2xl font-bold text-white mt-1">Ready to stretch?</h1>
@@ -23,6 +39,7 @@ export default function HomePage() {
       <section className="mb-4">
         <Link
           href="/player/demo"
+          data-testid="home-start-stretching"
           className="flex items-center justify-center gap-3 w-full rounded-2xl bg-[#7C5CFC] hover:bg-[#6B4EE0] active:scale-95 transition-all py-5 text-white font-semibold text-lg shadow-lg shadow-[#7C5CFC]/30"
         >
           <Play className="size-6 fill-white" />
@@ -50,22 +67,39 @@ export default function HomePage() {
 
       <section className="mb-8">
         <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl bg-white/5 border border-white/10 p-4 flex flex-col items-center gap-1">
+          <div
+            data-testid="home-stat-streak"
+            className="rounded-xl bg-white/5 border border-white/10 p-4 flex flex-col items-center gap-1"
+          >
             <Flame className="size-5 text-orange-400" />
-            <span className="text-xl font-bold text-white">5</span>
+            <span className="text-xl font-bold text-white">{progress.currentStreak}</span>
             <span className="text-xs text-white/50">Day streak</span>
           </div>
-          <div className="rounded-xl bg-white/5 border border-white/10 p-4 flex flex-col items-center gap-1">
+          <div
+            data-testid="home-stat-week-minutes"
+            className="rounded-xl bg-white/5 border border-white/10 p-4 flex flex-col items-center gap-1"
+          >
             <Clock className="size-5 text-[#7C5CFC]" />
-            <span className="text-xl font-bold text-white">48</span>
+            <span className="text-xl font-bold text-white">{progress.thisWeekMinutes}</span>
             <span className="text-xs text-white/50">Min this week</span>
           </div>
-          <div className="rounded-xl bg-white/5 border border-white/10 p-4 flex flex-col items-center gap-1">
+          <div
+            data-testid="home-stat-total-sessions"
+            className="rounded-xl bg-white/5 border border-white/10 p-4 flex flex-col items-center gap-1"
+          >
             <Zap className="size-5 text-yellow-400" />
-            <span className="text-xl font-bold text-white">42</span>
+            <span className="text-xl font-bold text-white">{progress.totalSessions}</span>
             <span className="text-xs text-white/50">Sessions</span>
           </div>
         </div>
+        {progress.longestStreak > 0 && progress.longestStreak !== progress.currentStreak && (
+          <p
+            data-testid="home-longest-streak"
+            className="mt-3 text-center text-xs text-white/40"
+          >
+            Longest streak: {progress.longestStreak} days
+          </p>
+        )}
       </section>
 
       <section>
@@ -77,6 +111,7 @@ export default function HomePage() {
               <Link
                 key={routine.id}
                 href={`/player/${routine.slug}`}
+                data-testid={`home-recommended-${routine.slug}`}
                 className="flex items-center justify-between rounded-xl bg-white/5 border border-white/10 p-4 hover:bg-white/10 hover:border-[#7C5CFC]/40 transition-all group"
               >
                 <div className="flex items-center gap-3">

@@ -4,16 +4,16 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 7 closeout)
+Last updated: 2026-04-18 (Phase 8 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 7 — Library / Search / Filters** closed on 2026-04-18. See
-`.claude/checkpoints/COMPLETED/phase-7.md`.
+**Phase 8 — Sessions & Streaks Loop** closed on 2026-04-18. See
+`.claude/checkpoints/COMPLETED/phase-8.md`.
 
-Phases 0–7 all closed:
+Phases 0–8 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
@@ -22,17 +22,19 @@ Phases 0–7 all closed:
 - Phase 5 — DB Toggle Hardening (`.claude/checkpoints/COMPLETED/phase-5.md`)
 - Phase 6 — Onboarding & Personalization (`.claude/checkpoints/COMPLETED/phase-6.md`)
 - Phase 7 — Library / Search / Filters (`.claude/checkpoints/COMPLETED/phase-7.md`)
+- Phase 8 — Sessions & Streaks Loop (`.claude/checkpoints/COMPLETED/phase-8.md`)
 
-Next phase: **Phase 8 — Sessions & Streaks Loop** (backend-lead + frontend-lead).
-Top backlog items: end-to-end `start → play → complete → streak
-updates → visible on /home` loop; `POST /api/sessions` completion
-semantics hardened (idempotent complete, partial-complete tolerance);
-streak rollover with timezone/DST handling in
-`src/services/streaks.ts`; optional pain-feedback capture per
-`HEALTH_RULES.md §Pain Feedback`; `/home` progress dashboard wired to
-`GET /api/progress` with current-streak / longest-streak / total-
-sessions cards. BDD scaffolds for the full loop in
-`tests/features/sessions/` and `tests/features/home/`.
+Next phase: **Phase 9 — Billing (Stripe)** (security-lead + backend-lead, Opus gate).
+Top backlog items: Stripe Checkout flow (free → subscriber) with
+`src/services/billing.ts` as the single `stripe` SDK importer
+(parallel to the `next-auth`-only-in-`src/lib/auth.ts` rule);
+`POST /api/webhooks/stripe` with signature verification + replay/
+idempotency via `stripe_webhook_events` ledger; `users.subscription
+Status` transitions on `customer.subscription.created`, `.updated`,
+`.deleted`, `invoice.payment_failed`; premium-routine gate in the
+catalog query (`isPremium=true` returned only to `active|trialing`);
+ADR-0005 for Stripe + webhook design; BDD scaffolds in
+`tests/features/billing/`. Test-mode live via `pnpm stripe listen`.
 
 ---
 

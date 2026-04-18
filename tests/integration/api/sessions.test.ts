@@ -4,6 +4,7 @@ vi.mock("@/lib/data", () => ({
   startSession: vi.fn(),
   updateSession: vi.fn(),
   getSessionById: vi.fn(),
+  getUserProfile: vi.fn(),
 }));
 
 // Mock the auth module so tests don't need Next.js runtime to resolve
@@ -20,6 +21,7 @@ import * as authModule from "@/lib/auth";
 const mockStart = dataModule.startSession as ReturnType<typeof vi.fn>;
 const mockUpdate = dataModule.updateSession as ReturnType<typeof vi.fn>;
 const mockGetSession = dataModule.getSessionById as ReturnType<typeof vi.fn>;
+const mockGetProfile = dataModule.getUserProfile as ReturnType<typeof vi.fn>;
 const mockAuth = authModule.auth as unknown as ReturnType<typeof vi.fn>;
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
@@ -226,5 +228,89 @@ describe("PATCH /api/sessions/[id]", () => {
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  // ─── Phase 8 completion semantics ─────────────────────────────────────────
+  it("returns CONFLICT when the session is already completed", async () => {
+    asAuthed();
+    mockGetSession.mockResolvedValueOnce({
+      ...BASE_SESSION,
+      completedAt: new Date("2024-01-01T00:30:00Z"),
+      completionPct: 100,
+    });
+    const res = await PATCH(
+      jsonRequest(
+        `http://localhost/api/sessions/${BASE_SESSION.id}`,
+        { completed: true },
+        "PATCH",
+      ),
+      patchCtx(BASE_SESSION.id),
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error.code).toBe("CONFLICT");
+    // Completed sessions are immutable — no write attempted.
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("passes the user's timezone to updateSession on completion", async () => {
+    asAuthed();
+    mockGetSession.mockResolvedValueOnce(BASE_SESSION);
+    mockGetProfile.mockResolvedValueOnce({
+      userId: USER_ID,
+      goals: [],
+      focusAreas: [],
+      avoidAreas: [],
+      safetyFlag: false,
+      reminderTime: null,
+      timezone: "America/New_York",
+      onboardedAt: null,
+    });
+    mockUpdate.mockResolvedValueOnce({
+      ...BASE_SESSION,
+      completedAt: new Date(),
+      completionPct: 90,
+    });
+
+    const res = await PATCH(
+      jsonRequest(
+        `http://localhost/api/sessions/${BASE_SESSION.id}`,
+        { completionPct: 90, completed: true },
+        "PATCH",
+      ),
+      patchCtx(BASE_SESSION.id),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mockUpdate).toHaveBeenCalledWith(
+      BASE_SESSION.id,
+      expect.objectContaining({ completed: true, completionPct: 90 }),
+      { timezone: "America/New_York" },
+    );
+  });
+
+  it("does not fetch the profile when the PATCH isn't completing", async () => {
+    asAuthed();
+    mockGetSession.mockResolvedValueOnce(BASE_SESSION);
+    mockUpdate.mockResolvedValueOnce({
+      ...BASE_SESSION,
+      durationDoneSec: 30,
+    });
+
+    await PATCH(
+      jsonRequest(
+        `http://localhost/api/sessions/${BASE_SESSION.id}`,
+        { durationDoneSec: 30 },
+        "PATCH",
+      ),
+      patchCtx(BASE_SESSION.id),
+    );
+
+    expect(mockGetProfile).not.toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalledWith(
+      BASE_SESSION.id,
+      expect.objectContaining({ durationDoneSec: 30 }),
+      { timezone: undefined },
+    );
   });
 });

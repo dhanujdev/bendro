@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { SessionSchema, PainFeedbackSchema } from "@/types"
-import { getSessionById, updateSession } from "@/lib/data"
+import { getSessionById, getUserProfile, updateSession } from "@/lib/data"
 import { auth } from "@/lib/auth"
 import {
   ERROR_CODES,
@@ -49,7 +49,24 @@ export async function PATCH(
     return errorResponse(ERROR_CODES.NOT_FOUND, "Session not found")
   }
 
-  const updated = await updateSession(id, parsed.data)
+  // Completed sessions are immutable. Reject any further PATCH to prevent
+  // the client from re-triggering streak logic or overwriting completion
+  // metadata after the session closed. (Phase 8 completion semantics.)
+  if (existing.completedAt !== null) {
+    return errorResponse(
+      ERROR_CODES.CONFLICT,
+      "Session already completed",
+    )
+  }
+
+  // On completion, fetch the user's timezone so streak rollover happens on
+  // the user's local calendar date. Non-completion PATCHes don't touch
+  // streaks, so skip the profile round-trip.
+  const timezone = parsed.data.completed
+    ? (await getUserProfile(authSession.user.id)).timezone
+    : undefined
+
+  const updated = await updateSession(id, parsed.data, { timezone })
   if (!updated) {
     return errorResponse(ERROR_CODES.NOT_FOUND, "Session not found")
   }

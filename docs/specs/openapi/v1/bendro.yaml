@@ -177,7 +177,10 @@ paths:
       description: |
         Requires an authenticated session cookie. A session that belongs to
         another user is reported as `NOT_FOUND` to prevent workspace
-        enumeration (`SECURITY_RULES.md §Authorization`).
+        enumeration (`SECURITY_RULES.md §Authorization`). Completed sessions
+        are immutable — any further PATCH returns `409 CONFLICT`. On
+        completion the server pulls `users.timezone` to ensure streak
+        rollover happens on the user's local calendar date.
       operationId: updateSession
       security:
         - sessionCookie: []
@@ -203,6 +206,7 @@ paths:
         "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /progress:
     get:
@@ -306,6 +310,13 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     Unauthorized:
       description: No valid session cookie on the request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: |
+        Resource is in a state that conflicts with the requested operation
+        (e.g., PATCHing a session that is already completed).
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }

@@ -298,9 +298,15 @@ export async function getSessionById(
   )
 }
 
+export interface UpdateSessionOptions {
+  /** User timezone (IANA) — used for timezone-aware streak rollover on completion. */
+  timezone?: string
+}
+
 export async function updateSession(
   id: string,
   patch: UpdateSessionPatch,
+  options: UpdateSessionOptions = {},
 ): Promise<SessionType | null> {
   return withFallback(
     "updateSession",
@@ -337,10 +343,14 @@ export async function updateSession(
 
       if (!row) return null
 
-      // Trigger streak update on completion if threshold met
+      // Trigger streak update on completion if threshold met. Timezone-
+      // aware: `updateStreak` is a no-op when `lastActiveDate === today`
+      // in the user's timezone, so double-complete in the same local day
+      // can't double-count. UTC is the fallback when the caller doesn't
+      // pass a profile timezone.
       if (patch.completed && (patch.completionPct ?? row.completionPct) >= 50) {
         const { updateStreak } = await import("@/services/streaks")
-        await updateStreak(row.userId).catch(() => {
+        await updateStreak(row.userId, options.timezone ?? "UTC").catch(() => {
           /* non-fatal */
         })
       }

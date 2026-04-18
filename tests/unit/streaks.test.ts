@@ -34,6 +34,35 @@ describe("previousDate", () => {
   it("handles year boundary correctly", () => {
     expect(previousDate("2024-01-01")).toBe("2023-12-31");
   });
+
+  // ─── Phase 8: DST + timezone boundary proofs ───────────────────────────────
+  // Streak rollover must not accidentally skip or double-count a day when
+  // DST transitions shift wall-clock by an hour. `previousDate` works in UTC
+  // noon, so DST never flips the calendar day it returns.
+
+  it("is DST-safe for US spring-forward day (2024-03-10)", () => {
+    // US clocks jumped from 02:00 → 03:00 on 2024-03-10 local time. The
+    // previousDate function is UTC-noon based so it must still return
+    // 2024-03-09, regardless of DST.
+    expect(previousDate("2024-03-10")).toBe("2024-03-09");
+  });
+
+  it("is DST-safe for US fall-back day (2024-11-03)", () => {
+    expect(previousDate("2024-11-03")).toBe("2024-11-02");
+  });
+
+  it("resolves America/New_York day during DST spring-forward correctly", () => {
+    // 2024-03-10 07:30Z is 03:30 EDT (already post spring-forward). The
+    // local calendar date in NY is 2024-03-10.
+    const date = new Date("2024-03-10T07:30:00Z");
+    expect(formatDateInTimezone(date, "America/New_York")).toBe("2024-03-10");
+  });
+
+  it("resolves Asia/Tokyo day-ahead boundary across UTC midnight", () => {
+    // 2024-06-14 23:30Z is 2024-06-15 08:30 JST. Local Tokyo date is 06-15.
+    const date = new Date("2024-06-14T23:30:00Z");
+    expect(formatDateInTimezone(date, "Asia/Tokyo")).toBe("2024-06-15");
+  });
 });
 
 // ─── Streak logic tests (mocked DB) ──────────────────────────────────────────
