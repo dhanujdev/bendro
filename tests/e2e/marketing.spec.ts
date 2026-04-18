@@ -49,19 +49,21 @@ test.describe("marketing — signed-out funnel", () => {
     )
   })
 
-  test("pricing → premium CTA disabled when STRIPE_PREMIUM_PRICE_ID unset", async ({
+  test("pricing → premium CTA enabled + signed-out → /signin", async ({
     page,
   }) => {
-    // Fresh dev env has no Stripe price configured. The button must
-    // render disabled with an explanatory note so the UI never POSTs a
-    // checkout that would 503.
+    // The e2e webServer sets STRIPE_PREMIUM_PRICE_ID to a synthetic
+    // value so the CTA renders enabled. A signed-out click routes
+    // through /signin first — no checkout call is made.
     await page.goto("/pricing")
     const premiumCta = page.getByTestId("pricing-start-checkout")
     await expect(premiumCta).toBeVisible()
-    await expect(premiumCta).toBeDisabled()
-    await expect(premiumCta).toHaveAttribute("data-has-price-id", "false")
+    await expect(premiumCta).toBeEnabled()
+    await expect(premiumCta).toHaveAttribute("data-has-price-id", "true")
     await expect(premiumCta).toHaveAttribute("data-signed-in", "false")
-    await expect(page.getByTestId("pricing-unavailable-note")).toBeVisible()
+
+    await premiumCta.click()
+    await expect(page).toHaveURL(/\/signin\?.*callbackUrl=/)
   })
 
   test("footer legal links → terms + privacy pages render", async ({ page }) => {

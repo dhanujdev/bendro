@@ -4,16 +4,16 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 14 closeout)
+Last updated: 2026-04-18 (Phase 15 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 14 — E2E Coverage / Playwright step bindings** closed on
-2026-04-18. See `.claude/checkpoints/COMPLETED/phase-14.md`.
+**Phase 15 — Observability + CI e2e + checkout happy-path** closed on
+2026-04-18. See `.claude/checkpoints/COMPLETED/phase-15.md`.
 
-Phases 0–14 all closed:
+Phases 0–15 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
@@ -29,17 +29,20 @@ Phases 0–14 all closed:
 - Phase 12 — Monetisation Polish / Paywall UX (`.claude/checkpoints/COMPLETED/phase-12.md`)
 - Phase 13 — Marketing Site & Pricing (`.claude/checkpoints/COMPLETED/phase-13.md`)
 - Phase 14 — E2E Coverage / Playwright step bindings (`.claude/checkpoints/COMPLETED/phase-14.md`)
+- Phase 15 — Observability + CI e2e + checkout happy-path (`.claude/checkpoints/COMPLETED/phase-15.md`)
 
-Next phase: **Phase 15 — Vercel deploy + observability + CI e2e** (devops-lead).
-Scope: wire env vars into Vercel preview + prod, stand up Sentry
-(errors) + PostHog (product analytics) behind the existing
-`trackEvent` stub, add a GitHub Actions e2e job that runs `pnpm e2e`
-on PR, and close out the remaining deferred e2e scaffolds (player
-with `getUserMedia` + WebGL stubs, onboarding step bindings,
-signed-in Stripe checkout happy-path with test-mode keys). The
-previously-deferred `pnpm build` Auth.js Drizzle-adapter blocker
-was resolved inside Phase 14 by conditionally attaching the
-adapter only when `DATABASE_URL` is set (JWT fallback otherwise).
+Next phase: **Phase 16 — Vercel link + production hardening** (devops-lead).
+Scope: link the Vercel project (requires interactive owner login —
+`vercel link` + `vercel env pull`), verify a preview deploy green
+end-to-end, ship the deferred e2e scaffolds (player `/player/demo`
+with `getUserMedia` + MediaPipe + VRM loader stubs, onboarding
+multi-step step bindings, server-side PostHog `captureServerEvent`
+call-sites in billing/auth/moderation RSCs), stand up production
+monitoring alerts (Sentry → PagerDuty or Slack webhook integration,
+uptime monitor for `/api/health`), and run the first load +
+performance pass (k6 or artillery against the /pricing → checkout
+path + /home → progress path). Backup + restore runbook for Neon is
+also in-scope.
 
 ---
 
@@ -57,8 +60,10 @@ adapter only when `DATABASE_URL` is set (JWT fallback otherwise).
 | Billing | Stripe Checkout + signed webhooks (Phase 9 — ADR-0005) |
 | Pose / Avatar | MediaPipe Tasks Vision → Kalidokit → @pixiv/three-vrm on @react-three/fiber |
 | Validation | Zod at every route boundary |
-| Testing | Vitest (unit/integration, 307 specs); Playwright (e2e, 16 specs, chromium) — Phase 14 |
-| Deploy | Vercel (preview + prod) — Phase 15 |
+| Testing | Vitest (unit/integration, 307 specs); Playwright (e2e, 18 specs, chromium) — Phase 14/15 |
+| Deploy | Vercel (preview + prod) — wired Phase 15, linked Phase 16 |
+| Observability | Sentry (`@sentry/nextjs@10.49.0`) + PostHog (`posthog-js` / `posthog-node`) — Phase 15 |
+| CI | GitHub Actions — lint + typecheck + test + build + Playwright e2e — Phase 15 |
 
 ---
 
@@ -137,6 +142,9 @@ Highlights:
 16. **Premium-routine gate is a catalog-level filter, not a paywall.** `GET /api/routines` resolves `isPremium(userId)` from `users.subscriptionStatus` and drops `isPremium=true` rows for viewers not in `{active, trialing}`. Free users and signed-out visitors never see premium rows. Phase 10 can add paywall UX (visible-but-locked) without schema changes by flipping `premiumUnlocked` usage from "filter" to "decorate".
 17. **E2E auth + billing bypass seams in `src/lib/auth.ts` + `src/services/billing.ts`.** Double-gated by `NODE_ENV !== "production"` AND `E2E_AUTH_BYPASS === "1"`. Read cookie-scoped overrides (`e2e_user_id`, `e2e_user_email`, `e2e_user_name`, `e2e_subscription_status`) to simulate signed-in / free / premium viewers without provisioning real OAuth or Stripe state. Physically disabled in production — the env-flag AND node-env check both need to be true for the bypass to run. (Phase 14)
 18. **`DrizzleAdapter` conditionally attached.** `src/lib/auth.ts` now wires `DrizzleAdapter` only when `hasDatabaseUrl()` returns true, falling back to `session: { strategy: "jwt" }` with a `token.sub`-aware session callback. Unblocks `pnpm build` (previously crashed at module load because the `db` Proxy couldn't be introspected without a URL) and `pnpm dev` without `DATABASE_URL`. (Phase 14, resolved the Phase-15 deferred blocker)
+19. **PostHog client/server physical split.** `src/lib/analytics.ts` is client-safe (lazy `posthog-js`); `src/lib/analytics-server.ts` is `import "server-only"` (lazy `posthog-node`). Reason: Turbopack traced `posthog-node`'s `node:fs` into the client bundle when a single `analytics.ts` module conditionally imported both — `serverExternalPackages` would fix it too, but the two-file split keeps the boundary explicit at call sites and crashes early if a client module ever imports the server version. (Phase 15)
+20. **Sentry wrap is unconditional.** `next.config.ts` exports `withSentryConfig(nextConfig, …)` regardless of env. When `SENTRY_AUTH_TOKEN` is unset the wrap is a no-op (no source-map upload, no tracing wrappers), so keeping it live by default costs nothing and guarantees production deploys will emit source maps the moment the token is provisioned. The three `sentry.*.config.ts` files self-gate on their DSN env vars so local dev / CI / preview-without-Sentry stay silent. (Phase 15)
+21. **CI e2e runs Playwright against a real `pnpm dev`.** `.github/workflows/ci.yml` caches browsers keyed on `pnpm-lock.yaml`, installs `--with-deps chromium` on cache miss (deps-only on hit), uploads `test-results/**` + `playwright-report/**` on failure. Stripe is NEVER called — `tests/e2e/billing.spec.ts` intercepts `/api/billing/checkout` via `page.route()` and returns a mock `{ sessionId, url }`. `playwright.config.ts` webServer.env seeds `STRIPE_PREMIUM_PRICE_ID=price_e2e_test_premium` so the CTA renders enabled. (Phase 15)
 
 ---
 

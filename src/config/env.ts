@@ -46,6 +46,17 @@ const envSchema = z.object({
   // AI (optional everywhere)
   OPENAI_API_KEY: z.string().optional(),
 
+  // Observability (Phase 15) — all optional; no-op when unset
+  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_ORG: z.string().optional(),
+  SENTRY_PROJECT: z.string().optional(),
+  SENTRY_AUTH_TOKEN: z.string().optional(),
+  NEXT_PUBLIC_POSTHOG_KEY: z.string().optional(),
+  NEXT_PUBLIC_POSTHOG_HOST: z
+    .string()
+    .url()
+    .default("https://app.posthog.com"),
+
   // Node env
   NODE_ENV: z
     .enum(["development", "test", "production"])

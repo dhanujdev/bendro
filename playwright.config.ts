@@ -45,6 +45,12 @@ export default defineConfig({
       // /api/auth/* routes stop spamming `MissingSecret` during e2e.
       AUTH_SECRET:
         "e2e-playwright-secret-do-not-use-outside-tests-0123456789abcdef",
+      // A synthetic priceId lets the /pricing Premium CTA render as
+      // enabled. Tests that want to exercise the happy-path intercept
+      // `/api/billing/checkout` via `page.route()` — Stripe is never
+      // actually called. Tests that want to exercise the disabled-CTA
+      // fallback UX override this at the config-unit level instead.
+      STRIPE_PREMIUM_PRICE_ID: "price_e2e_test_premium",
     },
   },
 })
