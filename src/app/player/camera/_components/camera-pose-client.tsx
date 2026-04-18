@@ -1,17 +1,30 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
+import dynamic from "next/dynamic"
 import { X, Camera, AlertTriangle, Loader2 } from "lucide-react"
 import type { PoseLandmarker } from "@mediapipe/tasks-vision"
 import { POSE_CONNECTIONS, POSE_LANDMARKS } from "@/lib/pose/landmarks"
 import { angleAtJoint, isReliable, type Landmark } from "@/lib/pose/angles"
 
 type Phase = "idle" | "loading" | "running" | "denied" | "error"
+type Mode = "stick" | "avatar"
 
 const WASM_CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.34/wasm"
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+
+// Three.js + R3F only run in the browser; load the avatar viewer lazily
+// with SSR disabled. See node_modules/next/dist/docs/01-app/02-guides/lazy-loading.md.
+const AvatarView = dynamic(() => import("./avatar-view"), {
+  ssr: false,
+  loading: () => (
+    <div className="absolute inset-0 flex items-center justify-center">
+      <Loader2 className="size-6 text-[#7C5CFC] animate-spin" />
+    </div>
+  ),
+})
 
 export default function CameraPoseClient() {
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -21,7 +34,15 @@ export default function CameraPoseClient() {
   const rafRef = useRef<number | null>(null)
   const lastVideoTimeRef = useRef<number>(-1)
 
+  // Shared latest-landmarks ref consumed by <AvatarView /> each frame. Using
+  // a ref avoids re-rendering the R3F canvas on every pose detection tick.
+  const landmarksRef = useRef<{
+    landmarks3D: Landmark[] | null
+    landmarks2D: Landmark[] | null
+  }>({ landmarks3D: null, landmarks2D: null })
+
   const [phase, setPhase] = useState<Phase>("idle")
+  const [mode, setMode] = useState<Mode>("stick")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [angle, setAngle] = useState<number | null>(null)
 
@@ -35,6 +56,7 @@ export default function CameraPoseClient() {
     landmarkerRef.current?.close()
     landmarkerRef.current = null
     lastVideoTimeRef.current = -1
+    landmarksRef.current = { landmarks3D: null, landmarks2D: null }
   }, [])
 
   useEffect(() => {
@@ -46,13 +68,12 @@ export default function CameraPoseClient() {
       const video = videoRef.current
       const canvas = canvasRef.current
       const landmarker = landmarkerRef.current
-      if (!video || !canvas || !landmarker) return
+      if (!video || !landmarker) return
 
-      const ctx = canvas.getContext("2d")
-      if (!ctx) return
+      const ctx = canvas?.getContext("2d") ?? null
 
       // Match canvas to intrinsic video dimensions on first valid frame.
-      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+      if (canvas && (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)) {
         if (video.videoWidth > 0) {
           canvas.width = video.videoWidth
           canvas.height = video.videoHeight
@@ -65,33 +86,44 @@ export default function CameraPoseClient() {
         lastVideoTimeRef.current = video.currentTime
         const result = landmarker.detectForVideo(video, nowMs)
         const landmarks = (result.landmarks?.[0] ?? null) as Landmark[] | null
+        const worldLandmarks = (result.worldLandmarks?.[0] ?? null) as Landmark[] | null
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        // Publish to the avatar pipeline. Kalidokit wants BOTH arrays.
+        landmarksRef.current = {
+          landmarks2D: landmarks,
+          landmarks3D: worldLandmarks ?? landmarks,
+        }
+
+        if (ctx && canvas) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+          if (landmarks) {
+            // Edges
+            ctx.strokeStyle = "#7C5CFC"
+            ctx.lineWidth = 4
+            ctx.lineCap = "round"
+            for (const [i, j] of POSE_CONNECTIONS) {
+              const p = landmarks[i]
+              const q = landmarks[j]
+              if (!p || !q) continue
+              ctx.beginPath()
+              ctx.moveTo(p.x * canvas.width, p.y * canvas.height)
+              ctx.lineTo(q.x * canvas.width, q.y * canvas.height)
+              ctx.stroke()
+            }
+
+            // Nodes
+            ctx.fillStyle = "#ffffff"
+            for (const lm of landmarks) {
+              ctx.beginPath()
+              ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 4, 0, Math.PI * 2)
+              ctx.fill()
+            }
+          }
+        }
 
         if (landmarks) {
-          // Edges
-          ctx.strokeStyle = "#7C5CFC"
-          ctx.lineWidth = 4
-          ctx.lineCap = "round"
-          for (const [i, j] of POSE_CONNECTIONS) {
-            const p = landmarks[i]
-            const q = landmarks[j]
-            if (!p || !q) continue
-            ctx.beginPath()
-            ctx.moveTo(p.x * canvas.width, p.y * canvas.height)
-            ctx.lineTo(q.x * canvas.width, q.y * canvas.height)
-            ctx.stroke()
-          }
-
-          // Nodes
-          ctx.fillStyle = "#ffffff"
-          for (const lm of landmarks) {
-            ctx.beginPath()
-            ctx.arc(lm.x * canvas.width, lm.y * canvas.height, 4, 0, Math.PI * 2)
-            ctx.fill()
-          }
-
-          // Left-knee flexion HUD value
+          // Left-knee flexion HUD value — same math regardless of mode.
           const hip = landmarks[POSE_LANDMARKS.LEFT_HIP]
           const knee = landmarks[POSE_LANDMARKS.LEFT_KNEE]
           const ankle = landmarks[POSE_LANDMARKS.LEFT_ANKLE]
@@ -159,6 +191,12 @@ export default function CameraPoseClient() {
     setAngle(null)
   }, [teardown])
 
+  // Memoise to keep the avatar tree stable across parent re-renders.
+  const avatarView = useMemo(
+    () => <AvatarView landmarksRef={landmarksRef} videoRef={videoRef} />,
+    [],
+  )
+
   return (
     <div className="fixed inset-0 bg-[#0F0F14] text-white flex flex-col">
       <header className="flex items-center justify-between px-4 py-3 z-10">
@@ -175,6 +213,12 @@ export default function CameraPoseClient() {
         <div className="size-10" />
       </header>
 
+      {phase === "running" && (
+        <div className="relative z-10 flex justify-center pb-2">
+          <ModeToggle mode={mode} onChange={setMode} />
+        </div>
+      )}
+
       <div className="flex-1 relative flex items-center justify-center overflow-hidden">
         <video
           ref={videoRef}
@@ -186,8 +230,15 @@ export default function CameraPoseClient() {
         <canvas
           ref={canvasRef}
           className="absolute inset-0 m-auto max-w-full max-h-full pointer-events-none"
-          style={{ transform: "scaleX(-1)", display: phase === "running" ? "block" : "none" }}
+          style={{
+            transform: "scaleX(-1)",
+            display: phase === "running" && mode === "stick" ? "block" : "none",
+          }}
         />
+
+        {phase === "running" && mode === "avatar" && (
+          <div className="absolute inset-0 pointer-events-auto">{avatarView}</div>
+        )}
 
         {phase === "idle" && <IdleOverlay onStart={start} />}
         {phase === "loading" && <LoadingOverlay />}
@@ -211,6 +262,37 @@ export default function CameraPoseClient() {
           </button>
         </footer>
       )}
+    </div>
+  )
+}
+
+function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+  return (
+    <div
+      role="tablist"
+      aria-label="View mode"
+      className="inline-flex items-center gap-1 rounded-full bg-white/10 p-1 text-xs font-medium"
+    >
+      <button
+        role="tab"
+        aria-selected={mode === "stick"}
+        onClick={() => onChange("stick")}
+        className={`px-4 py-1.5 rounded-full transition-colors ${
+          mode === "stick" ? "bg-white text-black" : "text-white/70 hover:text-white"
+        }`}
+      >
+        Stick Figure
+      </button>
+      <button
+        role="tab"
+        aria-selected={mode === "avatar"}
+        onClick={() => onChange("avatar")}
+        className={`px-4 py-1.5 rounded-full transition-colors ${
+          mode === "avatar" ? "bg-white text-black" : "text-white/70 hover:text-white"
+        }`}
+      >
+        Avatar
+      </button>
     </div>
   )
 }
