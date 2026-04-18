@@ -30,6 +30,47 @@ Feature: Routines catalog API
     Then the response status is 400
     And the response error code is "VALIDATION_ERROR"
 
+  # ─── Phase 7 query expansion ────────────────────────────────────────────────
+  Scenario: Search routines by a free-text query
+    When I send GET "/api/routines?q=morning"
+    Then the response status is 200
+    And every returned routine's title, slug, or description contains "morning" (case-insensitive)
+
+  Scenario: Filter routines by body area (goal→area mapping)
+    When I send GET "/api/routines?bodyArea=neck"
+    Then the response status is 200
+    And every returned routine has a goal mapped to body area "neck"
+
+  Scenario: Filter routines by duration bucket
+    When I send GET "/api/routines?durationBucket=short"
+    Then the response status is 200
+    And every returned routine has totalDurationSec less than or equal to 300
+
+  Scenario: safetyFlag=true drops deep-intensity routines
+    When I send GET "/api/routines?safetyFlag=true"
+    Then the response status is 200
+    And no returned routine has level "deep"
+
+  Scenario: avoidBodyArea drops routines whose goal maps to the avoided area
+    When I send GET "/api/routines?avoidBodyArea=hips"
+    Then the response status is 200
+    And no returned routine has goal "flexibility"
+
+  Scenario: Reject an unknown body area
+    When I send GET "/api/routines?bodyArea=nonsense"
+    Then the response status is 400
+    And the response error code is "VALIDATION_ERROR"
+
+  Scenario: Reject an unknown duration bucket
+    When I send GET "/api/routines?durationBucket=huge"
+    Then the response status is 400
+    And the response error code is "VALIDATION_ERROR"
+
+  Scenario: Reject a blank search query
+    When I send GET "/api/routines?q=%20"
+    Then the response status is 400
+    And the response error code is "VALIDATION_ERROR"
+
   # ─── POST /api/routines ─────────────────────────────────────────────────────
   Scenario: Create a routine with a valid payload
     When I send POST "/api/routines" with a valid routine body

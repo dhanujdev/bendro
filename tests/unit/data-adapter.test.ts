@@ -105,6 +105,105 @@ describe("getRoutines (fallback → mock)", () => {
   });
 });
 
+describe("getRoutines — Phase 7 filter expansion", () => {
+  it("q: case-insensitive substring match across title/slug/description", async () => {
+    const all = await getRoutines({ limit: 50, offset: 0 });
+    // Pick a substring we know exists in at least one title.
+    const needleFrom = all.data[0].title.slice(0, 4).toUpperCase();
+    const result = await getRoutines({ q: needleFrom, limit: 50, offset: 0 });
+    expect(result.data.length).toBeGreaterThan(0);
+    for (const r of result.data) {
+      const hay = [r.title, r.slug, r.description ?? ""]
+        .join(" ")
+        .toLowerCase();
+      expect(hay).toContain(needleFrom.toLowerCase());
+    }
+  });
+
+  it("q: returns empty for a guaranteed no-match", async () => {
+    const result = await getRoutines({
+      q: "zzzz-impossible-token-xyz",
+      limit: 50,
+      offset: 0,
+    });
+    expect(result.data).toEqual([]);
+    expect(result.total).toBe(0);
+  });
+
+  it("durationBucket: 'short' drops routines > 5 min", async () => {
+    const result = await getRoutines({
+      durationBucket: "short",
+      limit: 50,
+      offset: 0,
+    });
+    for (const r of result.data) {
+      expect(r.totalDurationSec).toBeLessThanOrEqual(300);
+    }
+  });
+
+  it("durationBucket: 'long' drops routines <= 15 min", async () => {
+    const result = await getRoutines({
+      durationBucket: "long",
+      limit: 50,
+      offset: 0,
+    });
+    for (const r of result.data) {
+      expect(r.totalDurationSec).toBeGreaterThan(900);
+    }
+  });
+
+  it("safetyFlag: drops deep-intensity routines", async () => {
+    const result = await getRoutines({
+      safetyFlag: true,
+      limit: 50,
+      offset: 0,
+    });
+    for (const r of result.data) {
+      expect(r.level).not.toBe("deep");
+    }
+  });
+
+  it("avoidBodyAreas: drops routines whose goal maps to avoided areas", async () => {
+    // flexibility maps to ["hips","hamstrings","shoulders","chest","calves"]
+    // — avoiding "hips" should drop every flexibility routine.
+    const result = await getRoutines({
+      avoidBodyAreas: ["hips"],
+      limit: 50,
+      offset: 0,
+    });
+    for (const r of result.data) {
+      expect(r.goal).not.toBe("flexibility");
+    }
+  });
+
+  it("bodyAreas: keeps only routines whose goal maps to ANY of the targets", async () => {
+    const result = await getRoutines({
+      bodyAreas: ["neck"],
+      limit: 50,
+      offset: 0,
+    });
+    // neck is in stress_relief, posture, pain_relief
+    for (const r of result.data) {
+      expect(["stress_relief", "posture", "pain_relief"]).toContain(r.goal);
+    }
+  });
+
+  it("combines filters (intersection) — goal + bucket + safetyFlag", async () => {
+    const result = await getRoutines({
+      goal: "flexibility",
+      durationBucket: "short",
+      safetyFlag: true,
+      limit: 50,
+      offset: 0,
+    });
+    for (const r of result.data) {
+      expect(r.goal).toBe("flexibility");
+      expect(r.totalDurationSec).toBeLessThanOrEqual(300);
+      expect(r.level).not.toBe("deep");
+    }
+  });
+});
+
 describe("getRoutineByIdOrSlug (fallback → mock)", () => {
   it("resolves the 'demo' alias to quick-full-body-stretch", async () => {
     const hit = await getRoutineByIdOrSlug("demo");

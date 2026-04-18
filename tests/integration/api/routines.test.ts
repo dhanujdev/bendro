@@ -91,6 +91,84 @@ describe("GET /api/routines", () => {
     const body = await res.json();
     expect(body.error.code).toBe("VALIDATION_ERROR");
   });
+
+  // ─── Phase 7 query expansion ──────────────────────────────────────────────
+  it("propagates q (text search) to the data layer", async () => {
+    mockGetRoutines.mockResolvedValueOnce({ data: [], total: 0 });
+    await GET(
+      buildRequest("http://localhost/api/routines?q=morning"),
+    );
+    expect(mockGetRoutines).toHaveBeenCalledWith(
+      expect.objectContaining({ q: "morning" }),
+    );
+  });
+
+  it("maps ?bodyArea=hips to bodyAreas=['hips'] at the adapter boundary", async () => {
+    mockGetRoutines.mockResolvedValueOnce({ data: [], total: 0 });
+    await GET(
+      buildRequest("http://localhost/api/routines?bodyArea=hips"),
+    );
+    expect(mockGetRoutines).toHaveBeenCalledWith(
+      expect.objectContaining({ bodyAreas: ["hips"] }),
+    );
+  });
+
+  it("maps ?avoidBodyArea=lower_back to avoidBodyAreas=['lower_back']", async () => {
+    mockGetRoutines.mockResolvedValueOnce({ data: [], total: 0 });
+    await GET(
+      buildRequest("http://localhost/api/routines?avoidBodyArea=lower_back"),
+    );
+    expect(mockGetRoutines).toHaveBeenCalledWith(
+      expect.objectContaining({ avoidBodyAreas: ["lower_back"] }),
+    );
+  });
+
+  it("propagates durationBucket through", async () => {
+    mockGetRoutines.mockResolvedValueOnce({ data: [], total: 0 });
+    await GET(
+      buildRequest("http://localhost/api/routines?durationBucket=short"),
+    );
+    expect(mockGetRoutines).toHaveBeenCalledWith(
+      expect.objectContaining({ durationBucket: "short" }),
+    );
+  });
+
+  it("propagates safetyFlag=true as a boolean", async () => {
+    mockGetRoutines.mockResolvedValueOnce({ data: [], total: 0 });
+    await GET(
+      buildRequest("http://localhost/api/routines?safetyFlag=true"),
+    );
+    expect(mockGetRoutines).toHaveBeenCalledWith(
+      expect.objectContaining({ safetyFlag: true }),
+    );
+  });
+
+  it("rejects an unknown bodyArea with VALIDATION_ERROR", async () => {
+    const res = await GET(
+      buildRequest("http://localhost/api/routines?bodyArea=nonsense"),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects an unknown durationBucket with VALIDATION_ERROR", async () => {
+    const res = await GET(
+      buildRequest("http://localhost/api/routines?durationBucket=huge"),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects an empty q (trimmed to zero length)", async () => {
+    const res = await GET(
+      buildRequest("http://localhost/api/routines?q=%20%20"),
+    );
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error.code).toBe("VALIDATION_ERROR");
+  });
 });
 
 describe("POST /api/routines", () => {

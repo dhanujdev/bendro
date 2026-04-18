@@ -78,6 +78,11 @@ paths:
         - { name: level,           in: query, schema: { $ref: "#/components/schemas/Intensity" } }
         - { name: isPremium,       in: query, schema: { type: boolean } }
         - { name: maxDurationSec,  in: query, schema: { type: integer, minimum: 1 } }
+        - { name: q,               in: query, description: Free-text search across title/slug/description (case-insensitive), schema: { type: string, minLength: 1, maxLength: 120 } }
+        - { name: bodyArea,        in: query, description: Keep routines whose goal maps to this body area, schema: { $ref: "#/components/schemas/BodyArea" } }
+        - { name: avoidBodyArea,   in: query, description: Drop routines whose goal maps to this body area, schema: { $ref: "#/components/schemas/BodyArea" } }
+        - { name: durationBucket,  in: query, description: "short=≤5min, medium=5–15min, long=>15min", schema: { type: string, enum: [short, medium, long] } }
+        - { name: safetyFlag,      in: query, description: When true, drops deep-intensity routines (Phase-11 replaces with caution-tag filter), schema: { type: boolean } }
         - { name: limit,           in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
         - { name: offset,          in: query, schema: { type: integer, minimum: 0, default: 0 } }
       responses:

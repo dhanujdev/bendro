@@ -35,6 +35,7 @@ import {
   type MockUserProfile,
 } from "@/lib/mock-data"
 import { isFallbackError, shortReason } from "@/lib/data-fallback"
+import { GOAL_BODY_AREAS } from "@/services/personalization"
 
 // ─── Fallback bookkeeping ─────────────────────────────────────────────────────
 
@@ -70,6 +71,24 @@ export interface ListRoutinesFilter {
   level?: Intensity
   isPremium?: boolean
   maxDurationSec?: number
+  /** Free-text search across title + slug + description (case-insensitive). */
+  q?: string
+  /** Keep routines whose goal maps to ANY of these body areas (GOAL_BODY_AREAS). */
+  bodyAreas?: BodyArea[]
+  /** Drop routines whose goal maps to ANY of these body areas (profile avoidAreas). */
+  avoidBodyAreas?: BodyArea[]
+  /**
+   * Duration bucket filter:
+   *   "short" ≤ 5min, "medium" 5–15min, "long" > 15min. `totalDurationSec`
+   *   on routines is the source of truth.
+   */
+  durationBucket?: "short" | "medium" | "long"
+  /**
+   * When true, drop routines with `level === "deep"`. Used to project the
+   * persisted `users.safetyFlag` through the library query. Phase 11 will
+   * replace this with real caution-tag filtering.
+   */
+  safetyFlag?: boolean
   limit: number
   offset: number
 }
@@ -118,6 +137,16 @@ export async function getRoutines(
   )
 }
 
+function bucketDuration(sec: number): "short" | "medium" | "long" {
+  if (sec <= 300) return "short"
+  if (sec <= 900) return "medium"
+  return "long"
+}
+
+function normalize(s: string): string {
+  return s.toLowerCase().trim()
+}
+
 function applyRoutineFilters(
   rows: RoutineType[],
   filter: ListRoutinesFilter,
@@ -130,6 +159,33 @@ function applyRoutineFilters(
     out = out.filter((r) => r.isPremium === filter.isPremium)
   if (filter.maxDurationSec !== undefined)
     out = out.filter((r) => r.totalDurationSec <= filter.maxDurationSec!)
+  if (filter.durationBucket !== undefined)
+    out = out.filter((r) => bucketDuration(r.totalDurationSec) === filter.durationBucket)
+  if (filter.safetyFlag) out = out.filter((r) => r.level !== "deep")
+  if (filter.q !== undefined && filter.q.length > 0) {
+    const needle = normalize(filter.q)
+    out = out.filter((r) => {
+      const hay = [r.title, r.slug, r.description ?? ""].map(normalize)
+      return hay.some((h) => h.includes(needle))
+    })
+  }
+  if (
+    (filter.bodyAreas && filter.bodyAreas.length > 0) ||
+    (filter.avoidBodyAreas && filter.avoidBodyAreas.length > 0)
+  ) {
+    out = out.filter((r) => {
+      const goalAreas = GOAL_BODY_AREAS[r.goal] ?? []
+      if (filter.bodyAreas && filter.bodyAreas.length > 0) {
+        const overlap = goalAreas.some((a) => filter.bodyAreas!.includes(a))
+        if (!overlap) return false
+      }
+      if (filter.avoidBodyAreas && filter.avoidBodyAreas.length > 0) {
+        const overlap = goalAreas.some((a) => filter.avoidBodyAreas!.includes(a))
+        if (overlap) return false
+      }
+      return true
+    })
+  }
   return out
 }
 

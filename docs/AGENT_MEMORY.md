@@ -4,16 +4,16 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 6 closeout)
+Last updated: 2026-04-18 (Phase 7 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 6 — Onboarding & Personalization** closed on 2026-04-18. See
-`.claude/checkpoints/COMPLETED/phase-6.md`.
+**Phase 7 — Library / Search / Filters** closed on 2026-04-18. See
+`.claude/checkpoints/COMPLETED/phase-7.md`.
 
-Phases 0–6 all closed:
+Phases 0–7 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
@@ -21,15 +21,18 @@ Phases 0–6 all closed:
 - Phase 4 — Player Stability (`.claude/checkpoints/COMPLETED/phase-4.md`)
 - Phase 5 — DB Toggle Hardening (`.claude/checkpoints/COMPLETED/phase-5.md`)
 - Phase 6 — Onboarding & Personalization (`.claude/checkpoints/COMPLETED/phase-6.md`)
+- Phase 7 — Library / Search / Filters (`.claude/checkpoints/COMPLETED/phase-7.md`)
 
-Next phase: **Phase 7 — Library / Search / Filters** (frontend-lead).
-Top backlog items: server-side library page wired to
-`filterRoutineCatalog(routines, profile)` using the signed-in user's
-persisted `goals` / `avoidAreas` / `safetyFlag`; search box (title /
-slug / description) with URL-state round-trip (`?q=`); filter chips for
-goal + intensity + duration bucket; "suggested for you" rail that
-leans on `suggestRoutinesForUser`. BDD scaffolds and integration tests
-for `GET /api/routines` query-param expansion.
+Next phase: **Phase 8 — Sessions & Streaks Loop** (backend-lead + frontend-lead).
+Top backlog items: end-to-end `start → play → complete → streak
+updates → visible on /home` loop; `POST /api/sessions` completion
+semantics hardened (idempotent complete, partial-complete tolerance);
+streak rollover with timezone/DST handling in
+`src/services/streaks.ts`; optional pain-feedback capture per
+`HEALTH_RULES.md §Pain Feedback`; `/home` progress dashboard wired to
+`GET /api/progress` with current-streak / longest-streak / total-
+sessions cards. BDD scaffolds for the full loop in
+`tests/features/sessions/` and `tests/features/home/`.
 
 ---
 

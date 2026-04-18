@@ -4,7 +4,7 @@ import type { BodyArea } from "@/types/stretch";
 
 // ─── Goal → body area mapping ─────────────────────────────────────────────────
 
-const GOAL_BODY_AREAS: Record<string, BodyArea[]> = {
+export const GOAL_BODY_AREAS: Record<string, BodyArea[]> = {
   flexibility: ["hips", "hamstrings", "shoulders", "chest", "calves"],
   mobility: ["hips", "ankles", "shoulders", "wrists", "upper_back"],
   recovery: ["lower_back", "quads", "hamstrings", "calves", "glutes"],
