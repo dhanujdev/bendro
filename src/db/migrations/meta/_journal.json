@@ -8,6 +8,13 @@
       "when": 1776532106324,
       "tag": "0000_loose_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1776534019195,
+      "tag": "0001_loud_patriot",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import type { GeneratePlanInput } from "@/types/routine";
+import type { GeneratePlanInput, RoutineType, Goal } from "@/types/routine";
 import type { BodyArea } from "@/types/stretch";
 
 // ─── Goal → body area mapping ─────────────────────────────────────────────────
@@ -164,6 +164,57 @@ export async function generateRoutine(input: GeneratePlanInput) {
     goal: goals[0],
     intensity,
   };
+}
+
+// ─── Catalog filter (profile-aware) ──────────────────────────────────────────
+//
+// Phase 6: filter the routine catalog by the user's persisted profile.
+//
+//   - If `goals` is non-empty, keep only routines whose `goal` is in it. An
+//     empty goals array means "no preference yet" → don't filter by goal.
+//   - If `avoidAreas` is non-empty, drop routines whose `goal` maps (via
+//     GOAL_BODY_AREAS) to ANY avoided area. Phase 11 will tighten this to
+//     a stretch-level caution check; the goal→area map is the right-
+//     coarse-grained proxy until the `routines.cautions` column lands.
+//   - If `safetyFlag` is true, drop routines at `level="deep"`. Also a
+//     temporary proxy — HEALTH_RULES.md calls out caution tags
+//     (`deep-spine`, `high-load`, `prone`) that do not yet exist on the
+//     schema. Phase 11 owns the real caution-tag filter; this rule is the
+//     most conservative default until then.
+//
+// Scoring is deliberately NOT done here — this is a filter. Ranking belongs
+// to `suggestRoutinesForUser` and future recommenders.
+
+export interface FilterProfile {
+  goals: Goal[]
+  avoidAreas: BodyArea[]
+  safetyFlag: boolean
+}
+
+export function filterRoutineCatalog<R extends Pick<RoutineType, "goal" | "level">>(
+  routines: R[],
+  profile: FilterProfile,
+): R[] {
+  const avoidedGoalBodyAreas = new Set<BodyArea>(profile.avoidAreas)
+
+  return routines.filter((r) => {
+    if (profile.goals.length > 0 && !profile.goals.includes(r.goal)) {
+      return false
+    }
+
+    if (avoidedGoalBodyAreas.size > 0) {
+      const goalAreas = GOAL_BODY_AREAS[r.goal] ?? []
+      if (goalAreas.some((a) => avoidedGoalBodyAreas.has(a))) {
+        return false
+      }
+    }
+
+    if (profile.safetyFlag && r.level === "deep") {
+      return false
+    }
+
+    return true
+  })
 }
 
 // ─── Preference-based routine suggestion ─────────────────────────────────────

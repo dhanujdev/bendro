@@ -29,7 +29,10 @@ import {
   createMockSession,
   updateMockSession,
   findMockSession,
+  getMockProfile,
+  updateMockProfile,
   type MockProgress,
+  type MockUserProfile,
 } from "@/lib/mock-data"
 import { isFallbackError, shortReason } from "@/lib/data-fallback"
 
@@ -428,6 +431,57 @@ async function computeDbProgress(
   }
 }
 
+// ─── User profile ────────────────────────────────────────────────────────────
+
+export type UserProfile = MockUserProfile
+
+export interface UpdateProfilePatch {
+  goals?: UserProfile["goals"]
+  focusAreas?: string[]
+  avoidAreas?: string[]
+  safetyFlag?: boolean
+  reminderTime?: string | null
+  timezone?: string
+  markOnboarded?: boolean
+}
+
+export async function getUserProfile(userId: string): Promise<UserProfile> {
+  return withFallback(
+    "getUserProfile",
+    async () => {
+      const { getProfile } = await import("@/services/profile")
+      const row = await getProfile(userId)
+      return row
+    },
+    () => getMockProfile(userId),
+  )
+}
+
+export async function updateUserProfile(
+  userId: string,
+  patch: UpdateProfilePatch,
+): Promise<UserProfile> {
+  return withFallback(
+    "updateUserProfile",
+    async () => {
+      const { updateProfile } = await import("@/services/profile")
+      return await updateProfile(userId, patch)
+    },
+    () => {
+      const applied: Partial<Omit<MockUserProfile, "userId">> = {}
+      if (patch.goals !== undefined) applied.goals = patch.goals
+      if (patch.focusAreas !== undefined) applied.focusAreas = patch.focusAreas
+      if (patch.avoidAreas !== undefined) applied.avoidAreas = patch.avoidAreas
+      if (patch.safetyFlag !== undefined) applied.safetyFlag = patch.safetyFlag
+      if (patch.reminderTime !== undefined)
+        applied.reminderTime = patch.reminderTime
+      if (patch.timezone !== undefined) applied.timezone = patch.timezone
+      if (patch.markOnboarded) applied.onboardedAt = new Date()
+      return updateMockProfile(userId, applied)
+    },
+  )
+}
+
 // ─── Adapter contract ────────────────────────────────────────────────────────
 
 /**
@@ -455,6 +509,8 @@ export interface DataAdapter {
   getSessionById: typeof getSessionById
   updateSession: typeof updateSession
   getProgress: typeof getProgress
+  getUserProfile: typeof getUserProfile
+  updateUserProfile: typeof updateUserProfile
 }
 
 export const dataAdapter: DataAdapter = {
@@ -466,4 +522,6 @@ export const dataAdapter: DataAdapter = {
   getSessionById,
   updateSession,
   getProgress,
+  getUserProfile,
+  updateUserProfile,
 }

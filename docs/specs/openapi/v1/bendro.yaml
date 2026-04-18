@@ -223,6 +223,55 @@ paths:
         "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /me:
+    get:
+      tags: [profile]
+      summary: Get the signed-in user's profile
+      description: |
+        Returns the onboarding-captured profile for the session user. The
+        `safetyFlag` is a derived boolean — the underlying pre-existing-
+        condition answers are never persisted (see `HEALTH_RULES.md`).
+      operationId: getMe
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/UserProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    patch:
+      tags: [profile]
+      summary: Update the signed-in user's profile
+      description: |
+        Partial update. Any subset of fields is accepted. The optional
+        `conditions` sub-object (four booleans) is reduced to `safetyFlag`
+        server-side and then discarded — individual answers are not
+        persisted (privacy per `HEALTH_RULES.md`).
+      operationId: updateMe
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateProfile" }
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/UserProfile" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
 components:
   securitySchemes:
     sessionCookie:
@@ -471,3 +520,75 @@ components:
               minutesStretched:  { type: integer, minimum: 0 }
               sessionsCompleted: { type: integer, minimum: 0 }
               completionPct:     { type: number, minimum: 0, maximum: 100 }
+
+    UserProfile:
+      type: object
+      required:
+        - userId
+        - goals
+        - focusAreas
+        - avoidAreas
+        - safetyFlag
+        - reminderTime
+        - timezone
+        - onboardedAt
+      properties:
+        userId:       { type: string, format: uuid }
+        goals:        { type: array, items: { $ref: "#/components/schemas/Goal" } }
+        focusAreas:   { type: array, items: { $ref: "#/components/schemas/BodyArea" } }
+        avoidAreas:   { type: array, items: { $ref: "#/components/schemas/BodyArea" } }
+        safetyFlag:
+          type: boolean
+          description: |
+            True when the user answered "yes" to any pre-existing-condition
+            question during onboarding. The individual answers are never
+            persisted (see HEALTH_RULES §Pre-Existing Condition Gating).
+        reminderTime:
+          type: string
+          nullable: true
+          pattern: '^\d{2}:\d{2}$'
+        timezone:     { type: string, example: "America/Los_Angeles" }
+        onboardedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    PreExistingConditions:
+      type: object
+      description: |
+        Pre-existing-condition booleans accepted by PATCH /me to compute
+        `safetyFlag`. The server discards these after computing the flag;
+        they are NEVER persisted.
+      required: [recentInjury, recentSurgery, jointOrSpineCondition, pregnancy]
+      additionalProperties: false
+      properties:
+        recentInjury:           { type: boolean }
+        recentSurgery:          { type: boolean }
+        jointOrSpineCondition:  { type: boolean }
+        pregnancy:              { type: boolean }
+
+    UpdateProfile:
+      type: object
+      additionalProperties: false
+      properties:
+        goals:
+          type: array
+          maxItems: 7
+          items: { $ref: "#/components/schemas/Goal" }
+        focusAreas:
+          type: array
+          maxItems: 13
+          items: { $ref: "#/components/schemas/BodyArea" }
+        avoidAreas:
+          type: array
+          maxItems: 13
+          items: { $ref: "#/components/schemas/BodyArea" }
+        reminderTime:
+          type: string
+          nullable: true
+          pattern: '^\d{2}:\d{2}$'
+        timezone:  { type: string, minLength: 1, maxLength: 64 }
+        conditions: { $ref: "#/components/schemas/PreExistingConditions" }
+        markOnboarded:
+          type: boolean
+          description: When true, sets `onboardedAt` to the server's current time.

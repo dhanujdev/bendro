@@ -148,6 +148,13 @@ export const users = pgTable(
     goals: jsonb("goals").$type<string[]>().notNull().default([]),
     focusAreas: jsonb("focus_areas").$type<string[]>().notNull().default([]),
     avoidAreas: jsonb("avoid_areas").$type<string[]>().notNull().default([]),
+    // Derived from onboarding pre-existing-condition questions per
+    // HEALTH_RULES.md §Pre-Existing Condition Gating. We persist only the
+    // boolean — never the individual answers (privacy). Set true if the user
+    // answered "yes" to ANY: recent injury, recent surgery, diagnosed
+    // joint/spine condition, pregnancy. User can clear this flag later.
+    safetyFlag: boolean("safety_flag").notNull().default(false),
+    onboardedAt: timestamp("onboarded_at"),
     reminderTime: text("reminder_time"),
     timezone: text("timezone").notNull().default("UTC"),
     subscriptionStatus: subscriptionStatusEnum("subscription_status")

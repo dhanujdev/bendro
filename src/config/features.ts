@@ -19,6 +19,12 @@ export const features = {
 
   /** Beta builder UI */
   routineBuilder: process.env.NEXT_PUBLIC_FF_BUILDER === "true",
+
+  /**
+   * Phase 6 multi-step onboarding flow (goals → focus → avoid → conditions).
+   * Defaults ON in dev; set NEXT_PUBLIC_FF_ONBOARDING_V1=false to disable.
+   */
+  onboardingV1: process.env.NEXT_PUBLIC_FF_ONBOARDING_V1 !== "false",
 } as const;
 
 export type FeatureFlag = keyof typeof features;

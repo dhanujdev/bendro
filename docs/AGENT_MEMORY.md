@@ -4,31 +4,32 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 5 closeout)
+Last updated: 2026-04-18 (Phase 6 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 5 — DB Toggle Hardening** closed on 2026-04-18. See
-`.claude/checkpoints/COMPLETED/phase-5.md`.
+**Phase 6 — Onboarding & Personalization** closed on 2026-04-18. See
+`.claude/checkpoints/COMPLETED/phase-6.md`.
 
-Phases 0–5 all closed:
+Phases 0–6 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
 - Phase 3 — Auth / NextAuth (`.claude/checkpoints/COMPLETED/phase-3.md`)
 - Phase 4 — Player Stability (`.claude/checkpoints/COMPLETED/phase-4.md`)
 - Phase 5 — DB Toggle Hardening (`.claude/checkpoints/COMPLETED/phase-5.md`)
+- Phase 6 — Onboarding & Personalization (`.claude/checkpoints/COMPLETED/phase-6.md`)
 
-Next phase: **Phase 6 — Onboarding & Personalization**
-(frontend-lead + backend-lead).
-Top backlog items: onboarding form under `src/app/onboarding/*` (goal
-capture + focus/avoid body-area selection + pre-existing-condition gate
-per `HEALTH_RULES.md`), `src/services/personalization.ts` tightened from
-stub to real filter, `GET /api/me` + `PATCH /api/me`,
-`ONBOARDING_V1_ENABLED` feature flag in `src/config/features.ts`, BDD +
-Playwright-scaffold coverage of the onboarding happy path.
+Next phase: **Phase 7 — Library / Search / Filters** (frontend-lead).
+Top backlog items: server-side library page wired to
+`filterRoutineCatalog(routines, profile)` using the signed-in user's
+persisted `goals` / `avoidAreas` / `safetyFlag`; search box (title /
+slug / description) with URL-state round-trip (`?q=`); filter chips for
+goal + intensity + duration bucket; "suggested for you" rail that
+leans on `suggestRoutinesForUser`. BDD scaffolds and integration tests
+for `GET /api/routines` query-param expansion.
 
 ---
 
@@ -120,6 +121,8 @@ Highlights:
 10. **Auth sessions table renamed to `auth_sessions`** to avoid collision with workout `sessions`. Passed to `DrizzleAdapter` via `sessionsTable: authSessions`. (D-006)
 11. **Local Postgres 16 via `docker-compose.db.yml`** for dev + CI parity with Neon (`bendro/bendro/bendro` on `localhost:5432`). Drizzle migrations work unchanged between vanilla Postgres and Neon serverless. `pnpm db:local:up | down | reset` wraps the container. (D-007)
 12. **`DataAdapter` interface via `typeof`** exported from `src/lib/data.ts`; `isFallbackError` / `shortReason` extracted to `src/lib/data-fallback.ts` so the fallback classifier is unit-tested independently. Adding a new data operation now forces the function + the interface to move together. (D-008)
+13. **Pre-existing conditions are never persisted** — the PATCH `/api/me` handler validates the 4 yes/no answers, derives `safetyFlag = any(...)`, and discards the raw object before calling the data layer. Persisting `safety_flag` only (not individual answers) is a privacy invariant from `HEALTH_RULES.md §Pre-Existing Condition Gating`. Enforced by integration test `tests/integration/api/me.test.ts` which asserts the data-layer call patch does NOT contain `conditions` / `recentInjury` / `recentSurgery`.
+14. **Onboarding UI is feature-flagged.** `NEXT_PUBLIC_FF_ONBOARDING_V1` defaults true; set to `false` to fall back to `LegacyOnboarding`. Instant-rollback path for the multi-step flow. `filterRoutineCatalog` uses `level === "deep"` as a conservative safety-flag proxy; Phase 11 replaces it with a real caution-tag column on `routines`.
 
 ---
 

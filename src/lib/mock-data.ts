@@ -457,6 +457,61 @@ export const MOCK_PROGRESS: MockProgress = {
   }),
 }
 
+// ─── User profile (in-memory) ────────────────────────────────────────────────
+//
+// When DATABASE_URL is unset, the /api/me route still needs a place to read
+// and write the onboarding selections. We key by userId so the fallback path
+// behaves like the real DB for tests and local dev. The store resets on
+// process restart, which is the correct semantics for an ephemeral mock.
+
+export interface MockUserProfile {
+  userId: string
+  goals: Goal[]
+  focusAreas: string[]
+  avoidAreas: string[]
+  safetyFlag: boolean
+  reminderTime: string | null
+  timezone: string
+  onboardedAt: Date | null
+}
+
+const profileStore: Map<string, MockUserProfile> = new Map()
+
+function defaultProfile(userId: string): MockUserProfile {
+  return {
+    userId,
+    goals: [],
+    focusAreas: [],
+    avoidAreas: [],
+    safetyFlag: false,
+    reminderTime: null,
+    timezone: "UTC",
+    onboardedAt: null,
+  }
+}
+
+export function getMockProfile(userId: string): MockUserProfile {
+  const existing = profileStore.get(userId)
+  if (existing) return existing
+  const seeded = defaultProfile(userId)
+  profileStore.set(userId, seeded)
+  return seeded
+}
+
+export function updateMockProfile(
+  userId: string,
+  patch: Partial<Omit<MockUserProfile, "userId">>,
+): MockUserProfile {
+  const current = getMockProfile(userId)
+  const next = { ...current, ...patch }
+  profileStore.set(userId, next)
+  return next
+}
+
+export function resetMockProfiles(): void {
+  profileStore.clear()
+}
+
 // ─── Goal display helpers ────────────────────────────────────────────────────
 
 export const GOAL_META: Record<Goal, { label: string; emoji: string }> = {

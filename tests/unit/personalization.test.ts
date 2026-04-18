@@ -16,6 +16,7 @@ vi.mock("@/db", () => ({
 import {
   generateRoutine,
   suggestRoutinesForUser,
+  filterRoutineCatalog,
 } from "@/services/personalization";
 import { db } from "@/db";
 
@@ -201,5 +202,124 @@ describe("suggestRoutinesForUser", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await suggestRoutinesForUser("u1", ["flexibility"], ["hips"] as any);
     expect(mockDb.query.routines.findMany).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("filterRoutineCatalog", () => {
+  // Minimal row shape that satisfies Pick<RoutineType, "goal" | "level">
+  // plus an `id` tag so tests can assert which rows survived. Typed
+  // precisely (no `any`) so the generic carries `id` through to the return.
+  type Row = {
+    id: string;
+    goal: import("@/types").Goal;
+    level: import("@/types/stretch").Intensity;
+  };
+  const routines: Row[] = [
+    { id: "r1", goal: "flexibility", level: "gentle" },
+    { id: "r2", goal: "flexibility", level: "deep" },
+    { id: "r3", goal: "recovery", level: "moderate" },
+    { id: "r4", goal: "athletic_performance", level: "deep" },
+    { id: "r5", goal: "stress_relief", level: "gentle" },
+    { id: "r6", goal: "posture", level: "moderate" },
+    { id: "r7", goal: "pain_relief", level: "gentle" },
+  ];
+
+  it("returns everything when the profile is empty", () => {
+    const result = filterRoutineCatalog(routines, {
+      goals: [],
+      avoidAreas: [],
+      safetyFlag: false,
+    });
+    expect(result).toHaveLength(routines.length);
+  });
+
+  it("filters by goals when the user has picked some", () => {
+    const result = filterRoutineCatalog(routines, {
+      goals: ["flexibility", "recovery"] as any,
+      avoidAreas: [],
+      safetyFlag: false,
+    });
+    expect(result.map((r) => r.id)).toEqual(["r1", "r2", "r3"]);
+  });
+
+  it("empty goals means no goal filter (not 'match nothing')", () => {
+    const result = filterRoutineCatalog(routines, {
+      goals: [],
+      avoidAreas: [],
+      safetyFlag: false,
+    });
+    expect(result.map((r) => r.id)).toEqual(routines.map((r) => r.id));
+  });
+
+  it("drops routines whose goal maps to any avoidArea", () => {
+    // flexibility maps to ["hips","hamstrings","shoulders","chest","calves"]
+    // avoiding "hips" should drop r1 + r2 (and r4 — athletic also hits hips)
+    const result = filterRoutineCatalog(routines, {
+      goals: [],
+      avoidAreas: ["hips"] as any,
+      safetyFlag: false,
+    });
+    const ids = result.map((r) => r.id);
+    expect(ids).not.toContain("r1");
+    expect(ids).not.toContain("r2");
+    expect(ids).not.toContain("r4");
+  });
+
+  it("safetyFlag=true drops deep-intensity routines", () => {
+    const result = filterRoutineCatalog(routines, {
+      goals: [],
+      avoidAreas: [],
+      safetyFlag: true,
+    });
+    const ids = result.map((r) => r.id);
+    expect(ids).not.toContain("r2");
+    expect(ids).not.toContain("r4");
+    expect(ids).toContain("r1");
+    expect(ids).toContain("r3");
+  });
+
+  it("safetyFlag keeps moderate and gentle routines", () => {
+    const result = filterRoutineCatalog(routines, {
+      goals: [],
+      avoidAreas: [],
+      safetyFlag: true,
+    });
+    for (const r of result) {
+      expect(r.level).not.toBe("deep");
+    }
+  });
+
+  it("combines goal + avoid + safetyFlag filters (intersection)", () => {
+    // goals=flexibility, avoidAreas=[hamstrings] hits flexibility→hamstrings
+    const result = filterRoutineCatalog(routines, {
+      goals: ["flexibility"] as any,
+      avoidAreas: ["hamstrings"] as any,
+      safetyFlag: true,
+    });
+    expect(result).toEqual([]);
+  });
+
+  it("is a pure function (does not mutate the input)", () => {
+    const snapshot = routines.map((r) => ({ ...r }));
+    filterRoutineCatalog(routines, {
+      goals: ["recovery"] as any,
+      avoidAreas: ["neck"] as any,
+      safetyFlag: true,
+    });
+    expect(routines).toEqual(snapshot);
+  });
+
+  it("handles unknown goal (no GOAL_BODY_AREAS entry) gracefully", () => {
+    // Deliberately type-punned: an unmapped goal string shouldn't crash.
+    const unknown = [
+      { id: "rx", goal: "custom_goal" as Row["goal"], level: "gentle" as Row["level"] },
+    ];
+    const result = filterRoutineCatalog(unknown, {
+      goals: [],
+      avoidAreas: ["hips"],
+      safetyFlag: false,
+    });
+    // No mapping → no avoided overlap → keep it.
+    expect(result).toHaveLength(1);
   });
 });
