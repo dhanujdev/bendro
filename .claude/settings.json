@@ -1,0 +1,194 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(pnpm:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(make:*)",
+      "Bash(docker:*)",
+      "Bash(docker-compose:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(pytest:*)",
+      "Bash(uvicorn:*)",
+      "Bash(mypy:*)",
+      "Bash(ruff:*)",
+      "Bash(bandit:*)",
+      "Bash(semgrep:*)",
+      "Bash(detect-secrets:*)",
+      "Bash(prisma:*)",
+      "Bash(psql:*)",
+      "Bash(playwright:*)",
+      "Bash(gh:*)",
+      "Bash(behave:*)",
+      "Read(*)",
+      "Write(apps/**)",
+      "Write(services/**)",
+      "Write(packages/**)",
+      "Write(infra/**)",
+      "Write(docs/**)",
+      "Write(tests/**)",
+      "Write(.claude/**)",
+      "Write(CLAUDE.md)",
+      "Write(CHANGELOG.md)",
+      "Write(CONTRIBUTING.md)",
+      "Write(Makefile)",
+      "Write(.github/**)",
+      "Write(docker-compose.yml)",
+      "Write(docker-compose.test.yml)",
+      "Write(pnpm-workspace.yaml)",
+      "Write(tsconfig.base.json)",
+      "Write(pyproject.toml)",
+      "Write(.pre-commit-config.yaml)",
+      "Write(.semgreprc)",
+      "Write(.secrets.baseline)",
+      "Write(.mcp.json)",
+      "Write(.env.example)",
+      "Write(.gitignore)"
+    ],
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(rm -rf /)",
+      "Bash(curl * | bash)",
+      "Bash(wget * | bash)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/action-logger.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(prisma migrate*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/post-migration.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(pytest*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/post-test.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(pnpm test*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/post-test.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write(**/schema.prisma)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/schema-changed.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write(docs/architecture/**)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/diagram-changed.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write(.claude/**)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/sync-orchestrator.py"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write(**/src/**/*.py)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/pre-write-check.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write(**/src/**/*.ts)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/pre-write-check.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write(**/src/**/*.tsx)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/pre-write-check.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write(**/routes/**)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/contract-guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write(**/endpoints/**)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/contract-guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Write(**/src/**)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/tdd-guard.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(gh pr create*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 /Users/dhanujgumpella/creatorOS/.claude/hooks/pre-pr-gate.py"
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "CLAUDE_PROJECT": "creator-os",
+    "CLAUDE_STANDARDS_VERSION": "1.0",
+    "PYTHONPATH": "/Users/dhanujgumpella/creatorOS/services/orchestrator/src:/Users/dhanujgumpella/creatorOS/services/ai/src"
+  }
+}

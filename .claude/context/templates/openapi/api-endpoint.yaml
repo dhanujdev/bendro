@@ -1,0 +1,400 @@
+# OpenAPI Spec Template — Single Resource
+# Replace: {Resource}, {resource}, {resources}, {tag}
+# Location: docs/specs/openapi/v1/{resource}.yaml
+# Validate: npx @redocly/cli lint docs/specs/openapi/v1/{resource}.yaml
+#
+# IMPORTANT: This file MUST be committed before any implementation code.
+# See: docs/ADR/0013-contract-first-development.md
+
+openapi: "3.1.0"
+
+info:
+  title: "{Resource} API"
+  version: "1.0.0"
+  description: |
+    CRUD endpoints for {Resource} management.
+    All endpoints require a valid JWT bearer token.
+    All responses use the standard envelope: `{ data, meta }` or `{ error, meta }`.
+
+servers:
+  - url: "http://localhost:8000"
+    description: "Local development"
+  - url: "https://api.creator-os.io"
+    description: "Production"
+
+tags:
+  - name: "{tag}"
+    description: "{Resource} management"
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/v1/workspaces/{workspaceId}/{resources}:
+    get:
+      operationId: "list{Resource}s"
+      summary: "List {resources} for a workspace"
+      description: |
+        Returns all non-deleted {resources} belonging to the authenticated workspace,
+        ordered by createdAt descending.
+        Scoped to the workspace_id extracted from the JWT — never from the request.
+      tags: ["{tag}"]
+      parameters:
+        - $ref: "#/components/parameters/workspaceId"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+          description: "Maximum number of records to return."
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: "Pagination offset."
+      responses:
+        "200":
+          description: "List retrieved successfully."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/{Resource}ListResponse"
+              example:
+                data:
+                  - id: "550e8400-e29b-41d4-a716-446655440000"
+                    workspaceId: "ws-001"
+                    field1: "example value"
+                    createdAt: "2026-04-06T12:00:00Z"
+                meta:
+                  requestId: "req-abc123"
+                  timestamp: "2026-04-06T12:00:00Z"
+                  version: "1"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    post:
+      operationId: "create{Resource}"
+      summary: "Create a {resource}"
+      description: |
+        Creates a new {resource} in the authenticated workspace.
+        Requires WORKSPACE_MEMBER role or above.
+      tags: ["{tag}"]
+      parameters:
+        - $ref: "#/components/parameters/workspaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Create{Resource}Request"
+            example:
+              field1: "example value"
+              field2: "optional value"
+      responses:
+        "201":
+          description: "{Resource} created successfully."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/{Resource}Response"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: "Conflict — a {resource} with conflicting attributes already exists."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error:
+                  code: "{RESOURCE}_ALREADY_EXISTS"
+                  message: "A {resource} with this name already exists in the workspace."
+                meta:
+                  requestId: "req-abc123"
+                  timestamp: "2026-04-06T12:00:00Z"
+                  version: "1"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/workspaces/{workspaceId}/{resources}/{resourceId}:
+    get:
+      operationId: "get{Resource}ById"
+      summary: "Get a {resource} by ID"
+      description: |
+        Returns a single {resource} by ID within the authenticated workspace.
+        Returns 404 (not 403) if the ID exists in a different workspace — prevents enumeration.
+      tags: ["{tag}"]
+      parameters:
+        - $ref: "#/components/parameters/workspaceId"
+        - $ref: "#/components/parameters/resourceId"
+      responses:
+        "200":
+          description: "{Resource} retrieved successfully."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/{Resource}Response"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+    delete:
+      operationId: "delete{Resource}"
+      summary: "Delete a {resource}"
+      description: |
+        Soft-deletes a {resource} by setting deletedAt.
+        Only WORKSPACE_OWNER or the original creator may delete.
+      tags: ["{tag}"]
+      parameters:
+        - $ref: "#/components/parameters/workspaceId"
+        - $ref: "#/components/parameters/resourceId"
+      responses:
+        "204":
+          description: "{Resource} deleted successfully (no body)."
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+# ---------------------------------------------------------------------------
+# Reusable Components
+# ---------------------------------------------------------------------------
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "RS256-signed JWT. Claims: sub, tenantId, role, exp, jti."
+
+  parameters:
+    workspaceId:
+      name: workspaceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: "Workspace UUID. Must match the tenantId claim in the JWT."
+
+    resourceId:
+      name: resourceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: "The {resource} UUID."
+
+  schemas:
+    Create{Resource}Request:
+      type: object
+      required: [field1]
+      properties:
+        field1:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: "{Description of field1}."
+          example: "example value"
+        field2:
+          type: string
+          maxLength: 1000
+          nullable: true
+          description: "{Description of optional field2}."
+          example: "optional value"
+
+    {Resource}Data:
+      type: object
+      required: [id, workspaceId, field1, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "The {resource} UUID."
+        workspaceId:
+          type: string
+          format: uuid
+          description: "The owning workspace UUID."
+        field1:
+          type: string
+          description: "{Description of field1}."
+        field2:
+          type: string
+          nullable: true
+          description: "{Description of optional field2}."
+        createdAt:
+          type: string
+          format: date-time
+          description: "ISO 8601 creation timestamp."
+
+    {Resource}Response:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: "#/components/schemas/{Resource}Data"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+
+    {Resource}ListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/{Resource}Data"
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+
+    ResponseMeta:
+      type: object
+      required: [requestId, timestamp, version]
+      properties:
+        requestId:
+          type: string
+          description: "Unique request trace ID."
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+          enum: ["1"]
+
+    ErrorResponse:
+      type: object
+      required: [error, meta]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: "Machine-readable error code (SCREAMING_SNAKE_CASE)."
+              example: "{RESOURCE}_NOT_FOUND"
+            message:
+              type: string
+              description: "Human-readable error description."
+            details:
+              type: object
+              additionalProperties: true
+              description: "Optional structured error details (e.g., validation field errors)."
+        meta:
+          $ref: "#/components/schemas/ResponseMeta"
+
+  responses:
+    BadRequest:
+      description: "Bad request — malformed JSON or invalid parameter."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "BAD_REQUEST"
+              message: "Request body could not be parsed."
+            meta:
+              requestId: "req-abc123"
+              timestamp: "2026-04-06T12:00:00Z"
+              version: "1"
+
+    Unauthorized:
+      description: "Authentication required or token expired."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "MISSING_TOKEN"
+              message: "Authorization header is required."
+            meta:
+              requestId: "req-abc123"
+              timestamp: "2026-04-06T12:00:00Z"
+              version: "1"
+
+    Forbidden:
+      description: "Authenticated but insufficient permissions."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "INSUFFICIENT_PERMISSIONS"
+              message: "This operation requires WORKSPACE_MEMBER role or above."
+            meta:
+              requestId: "req-abc123"
+              timestamp: "2026-04-06T12:00:00Z"
+              version: "1"
+
+    NotFound:
+      description: "Resource not found in this workspace."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "{RESOURCE}_NOT_FOUND"
+              message: "{Resource} not found."
+            meta:
+              requestId: "req-abc123"
+              timestamp: "2026-04-06T12:00:00Z"
+              version: "1"
+
+    ValidationError:
+      description: "Validation error — one or more fields failed validation."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "VALIDATION_ERROR"
+              message: "Request body validation failed."
+              details:
+                field1: ["Field is required.", "Must be at least 1 character."]
+            meta:
+              requestId: "req-abc123"
+              timestamp: "2026-04-06T12:00:00Z"
+              version: "1"
+
+    InternalError:
+      description: "Unexpected server error."
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error:
+              code: "INTERNAL_SERVER_ERROR"
+              message: "An unexpected error occurred. Please try again."
+            meta:
+              requestId: "req-abc123"
+              timestamp: "2026-04-06T12:00:00Z"
+              version: "1"

@@ -41,5 +41,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# claude code
-.claude/
+# claude code — framework is committed; user-local files are not
+.claude/settings.local.json
+.claude/scripts/__pycache__/
+.claude/context/__pycache__/
