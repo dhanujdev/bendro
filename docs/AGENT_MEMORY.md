@@ -4,16 +4,16 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 9 closeout)
+Last updated: 2026-04-18 (Phase 10 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 9 — Billing (Stripe)** closed on 2026-04-18. See
-`.claude/checkpoints/COMPLETED/phase-9.md`.
+**Phase 10 — Player polish** closed on 2026-04-18. See
+`.claude/checkpoints/COMPLETED/phase-10.md`.
 
-Phases 0–9 all closed:
+Phases 0–10 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
@@ -24,14 +24,17 @@ Phases 0–9 all closed:
 - Phase 7 — Library / Search / Filters (`.claude/checkpoints/COMPLETED/phase-7.md`)
 - Phase 8 — Sessions & Streaks Loop (`.claude/checkpoints/COMPLETED/phase-8.md`)
 - Phase 9 — Billing (Stripe) (`.claude/checkpoints/COMPLETED/phase-9.md`)
+- Phase 10 — Player polish (`.claude/checkpoints/COMPLETED/phase-10.md`)
 
-Next phase: **Phase 10 — Player polish** (frontend-lead, default model).
-Top backlog items: camera UX refinements (handoff indicators,
-gentler error states), keyboard shortcuts (space / left / right / esc),
-mobile layout pass for the player, per-stretch completion animation,
-VRM bone-driver smoothing review, Playwright smoke for the happy-path
-player flow (defer to Phase 14 if scope creeps). No schema changes
-expected; no new external deps expected.
+Next phase: **Phase 11 — Health Safety & Disclaimers** (security-lead, Opus).
+Top backlog items: `src/lib/disclaimers.ts` single-source-of-truth for
+every mandated disclaimer string, disclaimer rendering on onboarding /
+routine start / pain-feedback prompt, pain-feedback-≥7 flow (medical-
+guidance CTA + routine deprioritisation), pre-existing-condition
+safety-flag enforcement in `filterRoutineCatalog`, and a grep audit of
+all user-facing health-adjacent copy. No schema changes expected
+(`preExistingConditions` already exists from Phase 6); no new external
+deps expected.
 
 ---
 

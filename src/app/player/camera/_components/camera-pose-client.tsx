@@ -47,6 +47,7 @@ export default function CameraPoseClient() {
   const rafRef = useRef<number | null>(null)
   const lastVideoTimeRef = useRef<number>(-1)
   const lastDetectAtRef = useRef<number>(0)
+  const lastPoseAtRef = useRef<number>(0)
 
   // Shared latest-landmarks ref consumed by <AvatarView /> each frame. Using
   // a ref avoids re-rendering the R3F canvas on every pose detection tick.
@@ -59,6 +60,7 @@ export default function CameraPoseClient() {
   const [mode, setMode] = useState<Mode>("stick")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [angle, setAngle] = useState<number | null>(null)
+  const [isTracking, setIsTracking] = useState(false)
 
   const teardown = useCallback(() => {
     if (rafRef.current !== null) {
@@ -71,8 +73,21 @@ export default function CameraPoseClient() {
     landmarkerRef.current = null
     lastVideoTimeRef.current = -1
     lastDetectAtRef.current = 0
+    lastPoseAtRef.current = 0
     landmarksRef.current = { landmarks3D: null, landmarks2D: null }
+    setIsTracking(false)
   }, [])
+
+  // Pose-stability poll: `isTracking` goes true when we've had a landmark
+  // detection in the last 1.5s. Avoids flipping the UI on a single blip.
+  useEffect(() => {
+    if (phase !== "running") return
+    const id = setInterval(() => {
+      const fresh = performance.now() - lastPoseAtRef.current < 1500
+      setIsTracking((prev) => (prev === fresh ? prev : fresh))
+    }, 300)
+    return () => clearInterval(id)
+  }, [phase])
 
   useEffect(() => {
     // Detect browser-unsupported state up front so the user sees a distinct
@@ -120,6 +135,7 @@ export default function CameraPoseClient() {
           landmarks2D: landmarks,
           landmarks3D: worldLandmarks ?? landmarks,
         }
+        if (landmarks) lastPoseAtRef.current = nowMs
 
         if (ctx && canvas) {
           ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -238,7 +254,7 @@ export default function CameraPoseClient() {
   )
 
   return (
-    <div className="fixed inset-0 bg-[#0F0F14] text-white flex flex-col">
+    <div className="fixed inset-0 bg-[#0F0F14] text-white flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
       <header className="flex items-center justify-between px-4 py-3 z-10">
         <Link
           href="/home"
@@ -254,7 +270,8 @@ export default function CameraPoseClient() {
       </header>
 
       {phase === "running" && (
-        <div className="relative z-10 flex justify-center pb-2">
+        <div className="relative z-10 flex flex-col items-center gap-2 pb-2">
+          <TrackingPill active={isTracking} />
           <ModeToggle mode={mode} onChange={setMode} />
         </div>
       )}
@@ -308,6 +325,23 @@ export default function CameraPoseClient() {
   )
 }
 
+function TrackingPill({ active }: { active: boolean }) {
+  return (
+    <div
+      data-testid="camera-tracking-pill"
+      data-tracking={active ? "true" : "false"}
+      className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[10px] font-medium uppercase tracking-wider"
+    >
+      <span
+        className={`size-1.5 rounded-full ${active ? "bg-emerald-400 animate-pulse" : "bg-white/30"}`}
+      />
+      <span className={active ? "text-white/80" : "text-white/40"}>
+        {active ? "Tracking" : "Searching"}
+      </span>
+    </div>
+  )
+}
+
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
   return (
     <div
@@ -341,17 +375,23 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
 
 function IdleOverlay({ onStart }: { onStart: () => void }) {
   return (
-    <div className="flex flex-col items-center text-center px-6 max-w-md">
+    <div
+      data-testid="camera-overlay-idle"
+      className="flex flex-col items-center text-center px-6 max-w-md"
+    >
       <div className="size-16 rounded-full bg-[#7C5CFC]/15 flex items-center justify-center mb-6">
         <Camera className="size-7 text-[#7C5CFC]" />
       </div>
       <h1 className="text-2xl font-bold mb-2">Enable your camera</h1>
-      <p className="text-white/60 text-sm mb-8 leading-relaxed">
-        Bend uses your camera to track your body position and coach your stretch.
-        Video never leaves your device.
+      <p className="text-white/60 text-sm mb-3 leading-relaxed">
+        Bendro uses your camera to track your body position and coach your stretch.
+      </p>
+      <p className="text-white/40 text-xs mb-8 leading-relaxed">
+        Video and pose data stay on this device. Nothing is sent to our servers.
       </p>
       <button
         onClick={onStart}
+        data-testid="camera-enable"
         className="flex items-center gap-2 rounded-full bg-[#7C5CFC] hover:bg-[#6B4EE0] px-6 py-3.5 font-semibold transition-all active:scale-95 shadow-lg shadow-[#7C5CFC]/25"
       >
         <Camera className="size-5" />
@@ -363,7 +403,10 @@ function IdleOverlay({ onStart }: { onStart: () => void }) {
 
 function LoadingOverlay() {
   return (
-    <div className="flex flex-col items-center text-center px-6">
+    <div
+      data-testid="camera-overlay-loading"
+      className="flex flex-col items-center text-center px-6"
+    >
       <Loader2 className="size-8 text-[#7C5CFC] animate-spin mb-4" />
       <p className="text-white/70">Loading pose model…</p>
       <p className="text-white/40 text-xs mt-2">First load may take up to 30 seconds.</p>
@@ -373,17 +416,25 @@ function LoadingOverlay() {
 
 function UnsupportedOverlay() {
   return (
-    <div className="flex flex-col items-center text-center px-6 max-w-md">
+    <div
+      data-testid="camera-overlay-unsupported"
+      className="flex flex-col items-center text-center px-6 max-w-md"
+    >
       <div className="size-14 rounded-full bg-amber-500/15 flex items-center justify-center mb-4">
         <MonitorX className="size-6 text-amber-400" />
       </div>
-      <h2 className="text-xl font-bold mb-2">Browser not supported</h2>
-      <p className="text-white/60 text-sm mb-6 leading-relaxed">
-        Your browser doesn&rsquo;t expose camera access to web pages. Camera Mode
-        needs a modern Chrome, Safari, Edge, or Firefox over HTTPS.
+      <h2 className="text-xl font-bold mb-2">This browser can&rsquo;t reach your camera</h2>
+      <p className="text-white/60 text-sm mb-3 leading-relaxed">
+        Camera Mode needs a modern Chrome, Safari, Edge, or Firefox served over
+        HTTPS.
+      </p>
+      <p className="text-white/40 text-xs mb-6 leading-relaxed">
+        You&rsquo;re most likely on an older browser or an insecure connection
+        (plain HTTP or a private IP).
       </p>
       <Link
         href="/home"
+        data-testid="camera-back-home"
         className="rounded-full bg-white/10 hover:bg-white/20 px-5 py-2.5 text-sm font-medium"
       >
         Back to home
@@ -394,17 +445,24 @@ function UnsupportedOverlay() {
 
 function NoCameraOverlay({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center text-center px-6 max-w-md">
+    <div
+      data-testid="camera-overlay-no-camera"
+      className="flex flex-col items-center text-center px-6 max-w-md"
+    >
       <div className="size-14 rounded-full bg-amber-500/15 flex items-center justify-center mb-4">
         <Camera className="size-6 text-amber-400" />
       </div>
-      <h2 className="text-xl font-bold mb-2">No camera found</h2>
-      <p className="text-white/60 text-sm mb-6 leading-relaxed">
-        We couldn&rsquo;t find a camera on this device. Connect one (or enable your
-        built-in camera), then retry.
+      <h2 className="text-xl font-bold mb-2">No camera detected</h2>
+      <p className="text-white/60 text-sm mb-3 leading-relaxed">
+        We can&rsquo;t see a camera on this device. If you have one connected or
+        built in, make sure it isn&rsquo;t being used by another app.
+      </p>
+      <p className="text-white/40 text-xs mb-6 leading-relaxed">
+        Close other video apps, reconnect the camera, then retry.
       </p>
       <button
         onClick={onRetry}
+        data-testid="camera-retry"
         className="rounded-full bg-white/10 hover:bg-white/20 px-5 py-2.5 text-sm font-medium"
       >
         Try again
@@ -415,16 +473,25 @@ function NoCameraOverlay({ onRetry }: { onRetry: () => void }) {
 
 function DeniedOverlay({ onRetry }: { onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center text-center px-6 max-w-md">
-      <div className="size-14 rounded-full bg-red-500/15 flex items-center justify-center mb-4">
-        <AlertTriangle className="size-6 text-red-400" />
+    <div
+      data-testid="camera-overlay-denied"
+      className="flex flex-col items-center text-center px-6 max-w-md"
+    >
+      <div className="size-14 rounded-full bg-amber-500/15 flex items-center justify-center mb-4">
+        <AlertTriangle className="size-6 text-amber-400" />
       </div>
-      <h2 className="text-xl font-bold mb-2">Camera permission denied</h2>
-      <p className="text-white/60 text-sm mb-6">
-        Enable camera access in your browser settings, then retry.
+      <h2 className="text-xl font-bold mb-2">Camera access is off</h2>
+      <p className="text-white/60 text-sm mb-3 leading-relaxed">
+        We can&rsquo;t coach your stretches without camera access, and pose data
+        stays on your device either way.
+      </p>
+      <p className="text-white/40 text-xs mb-6 leading-relaxed">
+        Tap the camera icon in your browser&rsquo;s address bar, allow access for
+        this site, then retry.
       </p>
       <button
         onClick={onRetry}
+        data-testid="camera-retry"
         className="rounded-full bg-white/10 hover:bg-white/20 px-5 py-2.5 text-sm font-medium"
       >
         Try again
@@ -435,14 +502,26 @@ function DeniedOverlay({ onRetry }: { onRetry: () => void }) {
 
 function ErrorOverlay({ message, onRetry }: { message: string | null; onRetry: () => void }) {
   return (
-    <div className="flex flex-col items-center text-center px-6 max-w-md">
-      <div className="size-14 rounded-full bg-red-500/15 flex items-center justify-center mb-4">
-        <AlertTriangle className="size-6 text-red-400" />
+    <div
+      data-testid="camera-overlay-error"
+      className="flex flex-col items-center text-center px-6 max-w-md"
+    >
+      <div className="size-14 rounded-full bg-amber-500/15 flex items-center justify-center mb-4">
+        <AlertTriangle className="size-6 text-amber-400" />
       </div>
-      <h2 className="text-xl font-bold mb-2">Something went wrong</h2>
-      <p className="text-white/60 text-sm mb-6 break-words">{message ?? "Unknown error."}</p>
+      <h2 className="text-xl font-bold mb-2">Camera hit a snag</h2>
+      <p className="text-white/60 text-sm mb-2">Try again, or reload the page if it keeps happening.</p>
+      {message && (
+        <p
+          className="text-white/40 text-xs mb-6 break-words font-mono"
+          data-testid="camera-error-detail"
+        >
+          {message}
+        </p>
+      )}
       <button
         onClick={onRetry}
+        data-testid="camera-retry"
         className="rounded-full bg-white/10 hover:bg-white/20 px-5 py-2.5 text-sm font-medium"
       >
         Retry

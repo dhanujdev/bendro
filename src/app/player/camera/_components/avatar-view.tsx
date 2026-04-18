@@ -160,7 +160,7 @@ function VrmAvatar({ url, landmarksRef, videoRef }: VrmAvatarProps) {
     if (!vrm) return
     const { landmarks3D, landmarks2D } = landmarksRef.current
     const rig = solvePose(landmarks3D, landmarks2D, videoRef.current)
-    if (rig) applyToVrm(vrm, rig)
+    if (rig) applyToVrm(vrm, rig, delta)
     vrm.update(delta)
   })
 

@@ -28,6 +28,7 @@ import * as THREE from "three"
 import type { VRM } from "@pixiv/three-vrm"
 
 import type { Landmark } from "./angles"
+import { DEFAULT_MAX_ANGULAR_VELOCITY, velocityClampedSlerpT } from "./smoothing"
 
 export type Rig = NonNullable<ReturnType<typeof Kalidokit.Pose.solve>>
 
@@ -74,24 +75,32 @@ export function solvePose(
 }
 
 /**
- * Smoothing alpha used when applying rig rotations. Higher = snappier but
- * jitterier; lower = smoother but laggy. 0.3 is a good middle ground per
- * Kalidokit's own demos.
+ * Base EMA alpha used when applying rig rotations. Higher = snappier but
+ * jitterier; lower = smoother but laggy. 0.4 is tuned with Kalidokit's own
+ * demos; per-frame slerp with this alpha gives a ~100ms response curve at
+ * 30 Hz. The velocity clamp below composes on top — slerp `t` is always
+ * the smaller of (EMA alpha) and (velocity-capped alpha).
  */
 const SMOOTH_ALPHA = 0.4
+
+// Fallback dt used if the caller doesn't pass one (pre-velocity-clamp
+// call sites). Assumes 30 Hz.
+const FALLBACK_DT = 1 / 30
 
 const _euler = new THREE.Euler()
 const _targetQuat = new THREE.Quaternion()
 
 /**
- * Set a single bone's local rotation with per-frame lerp toward the target
- * Euler. Operates on a normalized VRM bone — the humanoid's normalization
- * hides skeleton-specific rest poses from us.
+ * Set a single bone's local rotation with per-frame slerp toward the target
+ * Euler. Slerp amount combines EMA alpha with an angular-velocity cap so
+ * single-frame landmark blips can't produce visible snaps — see
+ * `./smoothing.ts` for the clamp formula.
  */
 function applyBone(
   vrm: VRM,
   boneName: Parameters<VRM["humanoid"]["getNormalizedBoneNode"]>[0],
   target: XYZ | undefined,
+  dt: number,
   alpha = SMOOTH_ALPHA,
 ) {
   if (!target) return
@@ -100,44 +109,50 @@ function applyBone(
 
   _euler.set(target.x ?? 0, target.y ?? 0, target.z ?? 0)
   _targetQuat.setFromEuler(_euler)
-  bone.quaternion.slerp(_targetQuat, alpha)
+  const distance = bone.quaternion.angleTo(_targetQuat)
+  const t = velocityClampedSlerpT(distance, alpha, DEFAULT_MAX_ANGULAR_VELOCITY, dt)
+  if (t <= 0) return
+  bone.quaternion.slerp(_targetQuat, t)
 }
 
 /**
  * Apply a solved Kalidokit pose rig to a VRM avatar.
+ *
+ * `dt` is the frame delta in seconds (from R3F's `useFrame`). If omitted we
+ * fall back to an assumed 30 Hz step so legacy callers don't break.
  *
  * Kalidokit returns Euler-ish `{x, y, z}` vectors (and one special Hips
  * object) in Kalidokit's own axis convention. Empirically this maps 1:1 to
  * VRM's normalized bones for the main trunk + limbs. If poses look
  * backwards/inverted swap the Left/Right assignments here.
  */
-export function applyToVrm(vrm: VRM, rig: Rig) {
+export function applyToVrm(vrm: VRM, rig: Rig, dt: number = FALLBACK_DT) {
   if (!vrm.humanoid) return
 
   // Torso / spine chain
   if (hasXYZ(rig.Spine)) {
-    applyBone(vrm, "spine", rig.Spine)
-    applyBone(vrm, "chest", rig.Spine, SMOOTH_ALPHA * 0.6)
+    applyBone(vrm, "spine", rig.Spine, dt)
+    applyBone(vrm, "chest", rig.Spine, dt, SMOOTH_ALPHA * 0.6)
   }
 
   if (rig.Hips?.rotation) {
     const r = rig.Hips.rotation as XYZ
-    applyBone(vrm, "hips", r)
+    applyBone(vrm, "hips", r, dt)
   }
 
   // Arms
-  applyBone(vrm, "leftUpperArm", rig.LeftUpperArm as XYZ)
-  applyBone(vrm, "leftLowerArm", rig.LeftLowerArm as XYZ)
-  applyBone(vrm, "rightUpperArm", rig.RightUpperArm as XYZ)
-  applyBone(vrm, "rightLowerArm", rig.RightLowerArm as XYZ)
+  applyBone(vrm, "leftUpperArm", rig.LeftUpperArm as XYZ, dt)
+  applyBone(vrm, "leftLowerArm", rig.LeftLowerArm as XYZ, dt)
+  applyBone(vrm, "rightUpperArm", rig.RightUpperArm as XYZ, dt)
+  applyBone(vrm, "rightLowerArm", rig.RightLowerArm as XYZ, dt)
 
   // Hands (wrist rotation — rig.*Hand is a Vector-like XYZ)
-  applyBone(vrm, "leftHand", rig.LeftHand as XYZ)
-  applyBone(vrm, "rightHand", rig.RightHand as XYZ)
+  applyBone(vrm, "leftHand", rig.LeftHand as XYZ, dt)
+  applyBone(vrm, "rightHand", rig.RightHand as XYZ, dt)
 
   // Legs
-  if (hasXYZ(rig.LeftUpperLeg)) applyBone(vrm, "leftUpperLeg", rig.LeftUpperLeg)
-  if (hasXYZ(rig.LeftLowerLeg)) applyBone(vrm, "leftLowerLeg", rig.LeftLowerLeg)
-  if (hasXYZ(rig.RightUpperLeg)) applyBone(vrm, "rightUpperLeg", rig.RightUpperLeg)
-  if (hasXYZ(rig.RightLowerLeg)) applyBone(vrm, "rightLowerLeg", rig.RightLowerLeg)
+  if (hasXYZ(rig.LeftUpperLeg)) applyBone(vrm, "leftUpperLeg", rig.LeftUpperLeg, dt)
+  if (hasXYZ(rig.LeftLowerLeg)) applyBone(vrm, "leftLowerLeg", rig.LeftLowerLeg, dt)
+  if (hasXYZ(rig.RightUpperLeg)) applyBone(vrm, "rightUpperLeg", rig.RightUpperLeg, dt)
+  if (hasXYZ(rig.RightLowerLeg)) applyBone(vrm, "rightLowerLeg", rig.RightLowerLeg, dt)
 }
