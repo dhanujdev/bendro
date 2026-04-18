@@ -13,6 +13,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Foundational docs: `docs/AGENT_MEMORY.md`, `docs/BLOCKERS.md`, `docs/DECISIONS.md`, `docs/EXECUTION_LOG.md`, `docs/PHASES.md`, this `CHANGELOG.md`.
 - `.claude/checkpoints/ACTIVE.md` + `docs/SESSION_HANDOFF.md` workflow for cross-session continuity.
 - **Phase 1 — Test Coverage Baseline:** `@vitest/coverage-v8` reporter wired up with per-service threshold (≥85% lines for `src/services/**`) and global threshold (≥70% lines). `test:coverage` script added. Unit tests added for `billing`, `routines`, `sessions`, `personalization`, and `src/lib/data.ts` adapter (83 tests total, services at 95% line coverage).
+- **Phase 2 — API Contract & Validation:** `src/lib/http.ts` with standardized `{ error: { code, message, details? } }` envelope and 8 error codes (VALIDATION_ERROR, INVALID_JSON, NOT_FOUND, UNAUTHENTICATED, FORBIDDEN, CONFLICT, RATE_LIMITED, INTERNAL). All 6 API routes migrated. `docs/specs/openapi/v1/bendro.yaml` Error schema rewritten. Integration tests added for every route (`tests/integration/api/*`) and Gherkin scaffolds in `tests/features/api/*`. 117 tests passing.
 
 ### Changed
 - Python hooks (`contract-guard.py`, `tdd-guard.py`, `pre-pr-gate.py`, `schema-changed.py`, `post-migration.py`) retargeted from `services/api`, `services/orchestrator`, `packages/*` layout to bendro's `src/app/api/**/route.ts`, `src/services/**`, `src/db/**`, Drizzle + pnpm conventions.
@@ -21,6 +22,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Creator-OS-only agents: `orchestration-lead`, `policy-lead`, `data-lead`.
 - Creator-OS-only skills: `langgraph-review`, `policy-check`, `cost-tracking-check`, `workflow-adapter-check`, `evaluation-run`.
 - `.claude/rules/LEGAL_RULES.md` (replaced by `HEALTH_RULES.md` — exercise/medical domain).
+
+### Fixed
+- `/api/routines?isPremium=false` was returning premium routines because `z.coerce.boolean()` coerces the string `"false"` to `true`. Replaced with `z.enum(["true","false"]).transform(…)` (Phase 2).
 
 ### Security
 - Documented camera/pose privacy invariant in `SECURITY_RULES.md` and `HEALTH_RULES.md`: pose data never leaves the client.

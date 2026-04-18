@@ -1,6 +1,12 @@
 import { z } from "zod"
 import { SessionSchema, PainFeedbackSchema } from "@/types"
 import { updateSession } from "@/lib/data"
+import {
+  ERROR_CODES,
+  errorResponse,
+  jsonResponse,
+  readJsonBody,
+} from "@/lib/http"
 
 const UpdateSessionBodySchema = z.object({
   durationDoneSec: z.number().int().nonnegative().optional(),
@@ -16,26 +22,21 @@ export async function PATCH(
 ) {
   const { id } = await ctx.params
 
-  let body: unknown
-  try {
-    body = await request.json()
-  } catch {
-    return Response.json({ error: "Invalid JSON body" }, { status: 400 })
-  }
+  const body = await readJsonBody(request)
+  if (!body.ok) return body.response
 
-  const parsed = UpdateSessionBodySchema.safeParse(body)
+  const parsed = UpdateSessionBodySchema.safeParse(body.body)
   if (!parsed.success) {
-    return Response.json(
-      { error: "Validation failed", issues: parsed.error.issues },
-      { status: 422 },
-    )
+    return errorResponse(ERROR_CODES.VALIDATION_ERROR, "Validation failed", {
+      details: parsed.error.issues,
+    })
   }
 
   const session = await updateSession(id, parsed.data)
   if (!session) {
-    return Response.json({ error: "Session not found" }, { status: 404 })
+    return errorResponse(ERROR_CODES.NOT_FOUND, "Session not found")
   }
 
   const validated = SessionSchema.parse(session)
-  return Response.json({ data: validated })
+  return jsonResponse({ data: validated })
 }

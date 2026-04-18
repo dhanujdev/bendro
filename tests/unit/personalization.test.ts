@@ -45,13 +45,15 @@ function stretch(overrides: Partial<StretchRow> & Pick<StretchRow, "id">): Stret
   };
 }
 
-const baseInput = {
+import type { GeneratePlanInput } from "@/types/routine";
+
+const baseInput: GeneratePlanInput = {
   userId: "00000000-0000-0000-0000-000000000001",
-  goals: ["flexibility"] as const,
-  focusAreas: [] as never[],
-  avoidAreas: [] as never[],
+  goals: ["flexibility"],
+  focusAreas: [],
+  avoidAreas: [],
   timeBudgetSec: 600,
-  intensity: "moderate" as const,
+  intensity: "moderate",
   daysPerWeek: 5,
 };
 

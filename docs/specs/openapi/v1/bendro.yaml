@@ -240,22 +240,39 @@ components:
       enum: [flexibility, mobility, recovery, stress_relief, posture,
              athletic_performance, pain_relief]
 
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_ERROR
+        - INVALID_JSON
+        - NOT_FOUND
+        - UNAUTHENTICATED
+        - FORBIDDEN
+        - CONFLICT
+        - RATE_LIMITED
+        - INTERNAL
+
     Error:
       type: object
       required: [error]
       properties:
-        error: { type: string }
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:    { $ref: "#/components/schemas/ErrorCode" }
+            message: { type: string }
+            details:
+              description: Optional structured details (e.g. Zod issue list).
+              oneOf:
+                - { type: object, additionalProperties: true }
+                - { type: array,  items: { type: object, additionalProperties: true } }
 
     ValidationFailure:
-      type: object
-      required: [error]
-      properties:
-        error:  { type: string }
-        issues:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
+      # Retained as an alias for Error so existing references still resolve.
+      # Validation failures carry details = array of Zod issues.
+      allOf:
+        - $ref: "#/components/schemas/Error"
 
     Stretch:
       type: object

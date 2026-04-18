@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server"
 import { z } from "zod"
 import { getProgress } from "@/lib/data"
+import { ERROR_CODES, errorResponse, jsonResponse } from "@/lib/http"
 
 const QuerySchema = z.object({
   userId: z.string().uuid().optional(),
@@ -31,13 +32,12 @@ export async function GET(request: NextRequest) {
     Object.fromEntries(request.nextUrl.searchParams),
   )
   if (!query.success) {
-    return Response.json(
-      { error: "Invalid query parameters", issues: query.error.issues },
-      { status: 400 },
-    )
+    return errorResponse(ERROR_CODES.VALIDATION_ERROR, "Invalid query parameters", {
+      details: query.error.issues,
+    })
   }
 
   const progress = await getProgress(query.data)
   const validated = ProgressResponseSchema.parse(progress)
-  return Response.json({ data: validated })
+  return jsonResponse({ data: validated })
 }
