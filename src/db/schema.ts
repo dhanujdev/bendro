@@ -286,6 +286,29 @@ export const streaks = pgTable(
   (t) => [index("streaks_user_idx").on(t.userId)]
 );
 
+// ─── Stripe webhook ledger (Phase 9) ──────────────────────────────────────────
+//
+// Idempotency ledger for Stripe webhook deliveries. eventId is Stripe's event
+// id (evt_...); the unique PK makes duplicate POSTs a no-op via
+// `onConflictDoNothing`. payload holds the raw event envelope for audit /
+// replay; processedAt is set after the subscription-state mutation succeeds.
+export const stripeWebhookEvents = pgTable(
+  "stripe_webhook_events",
+  {
+    eventId: text("event_id").primaryKey(),
+    type: text("type").notNull(),
+    receivedAt: timestamp("received_at").notNull().defaultNow(),
+    processedAt: timestamp("processed_at"),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull(),
+  },
+  (t) => [
+    index("stripe_webhook_events_type_idx").on(t.type),
+    index("stripe_webhook_events_received_idx").on(t.receivedAt),
+  ]
+);
+
 // ─── Relations ────────────────────────────────────────────────────────────────
 //
 // Declared explicitly so Drizzle's relational query API (`db.query.X.findFirst({
@@ -384,6 +407,8 @@ export type Favorite = typeof favorites.$inferSelect;
 export type NewFavorite = typeof favorites.$inferInsert;
 export type Streak = typeof streaks.$inferSelect;
 export type NewStreak = typeof streaks.$inferInsert;
+export type StripeWebhookEvent = typeof stripeWebhookEvents.$inferSelect;
+export type NewStripeWebhookEvent = typeof stripeWebhookEvents.$inferInsert;
 export type Account = typeof accounts.$inferSelect;
 export type NewAccount = typeof accounts.$inferInsert;
 export type AuthSession = typeof authSessions.$inferSelect;

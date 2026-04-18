@@ -8,6 +8,8 @@ import {
   BodyAreaSchema,
 } from "@/types"
 import { getRoutines, createRoutine } from "@/lib/data"
+import { auth } from "@/lib/auth"
+import { isPremium } from "@/services/billing"
 import {
   ERROR_CODES,
   errorResponse,
@@ -46,12 +48,20 @@ export async function GET(request: NextRequest) {
   }
 
   const { limit, offset, bodyArea, avoidBodyArea, ...rest } = query.data
+  // Resolve whether the viewer is entitled to see premium routines. Signed-
+  // out and free users never see `isPremium=true` rows. `isPremium()` reads
+  // `users.subscriptionStatus` and returns true only for `active|trialing`.
+  const authSession = await auth()
+  const viewerIsPremium = authSession?.user?.id
+    ? await isPremium(authSession.user.id)
+    : false
   const { data, total } = await getRoutines({
     ...rest,
     limit,
     offset,
     bodyAreas: bodyArea ? [bodyArea] : undefined,
     avoidBodyAreas: avoidBodyArea ? [avoidBodyArea] : undefined,
+    premiumUnlocked: viewerIsPremium,
   })
   const validated = z.array(RoutineSchema).parse(data)
 

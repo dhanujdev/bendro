@@ -4,16 +4,16 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 8 closeout)
+Last updated: 2026-04-18 (Phase 9 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 8 — Sessions & Streaks Loop** closed on 2026-04-18. See
-`.claude/checkpoints/COMPLETED/phase-8.md`.
+**Phase 9 — Billing (Stripe)** closed on 2026-04-18. See
+`.claude/checkpoints/COMPLETED/phase-9.md`.
 
-Phases 0–8 all closed:
+Phases 0–9 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
@@ -23,18 +23,15 @@ Phases 0–8 all closed:
 - Phase 6 — Onboarding & Personalization (`.claude/checkpoints/COMPLETED/phase-6.md`)
 - Phase 7 — Library / Search / Filters (`.claude/checkpoints/COMPLETED/phase-7.md`)
 - Phase 8 — Sessions & Streaks Loop (`.claude/checkpoints/COMPLETED/phase-8.md`)
+- Phase 9 — Billing (Stripe) (`.claude/checkpoints/COMPLETED/phase-9.md`)
 
-Next phase: **Phase 9 — Billing (Stripe)** (security-lead + backend-lead, Opus gate).
-Top backlog items: Stripe Checkout flow (free → subscriber) with
-`src/services/billing.ts` as the single `stripe` SDK importer
-(parallel to the `next-auth`-only-in-`src/lib/auth.ts` rule);
-`POST /api/webhooks/stripe` with signature verification + replay/
-idempotency via `stripe_webhook_events` ledger; `users.subscription
-Status` transitions on `customer.subscription.created`, `.updated`,
-`.deleted`, `invoice.payment_failed`; premium-routine gate in the
-catalog query (`isPremium=true` returned only to `active|trialing`);
-ADR-0005 for Stripe + webhook design; BDD scaffolds in
-`tests/features/billing/`. Test-mode live via `pnpm stripe listen`.
+Next phase: **Phase 10 — Player polish** (frontend-lead, default model).
+Top backlog items: camera UX refinements (handoff indicators,
+gentler error states), keyboard shortcuts (space / left / right / esc),
+mobile layout pass for the player, per-stretch completion animation,
+VRM bone-driver smoothing review, Playwright smoke for the happy-path
+player flow (defer to Phase 14 if scope creeps). No schema changes
+expected; no new external deps expected.
 
 ---
 
@@ -49,7 +46,7 @@ ADR-0005 for Stripe + webhook design; BDD scaffolds in
 | Data adapter | `src/lib/data.ts` — single switch between mock and DB |
 | State | Zustand (client UI), TanStack Query (server-state cache) |
 | Auth | Auth.js v5 (`next-auth@5.0.0-beta.31`) + `@auth/drizzle-adapter`, database sessions, Google OAuth + Resend magic-link (Phase 3) |
-| Billing | Stripe (planned — Phase 9; currently stub) |
+| Billing | Stripe Checkout + signed webhooks (Phase 9 — ADR-0005) |
 | Pose / Avatar | MediaPipe Tasks Vision → Kalidokit → @pixiv/three-vrm on @react-three/fiber |
 | Validation | Zod at every route boundary |
 | Testing | Vitest (unit/integration); Playwright planned Phase 14 |
@@ -128,6 +125,8 @@ Highlights:
 12. **`DataAdapter` interface via `typeof`** exported from `src/lib/data.ts`; `isFallbackError` / `shortReason` extracted to `src/lib/data-fallback.ts` so the fallback classifier is unit-tested independently. Adding a new data operation now forces the function + the interface to move together. (D-008)
 13. **Pre-existing conditions are never persisted** — the PATCH `/api/me` handler validates the 4 yes/no answers, derives `safetyFlag = any(...)`, and discards the raw object before calling the data layer. Persisting `safety_flag` only (not individual answers) is a privacy invariant from `HEALTH_RULES.md §Pre-Existing Condition Gating`. Enforced by integration test `tests/integration/api/me.test.ts` which asserts the data-layer call patch does NOT contain `conditions` / `recentInjury` / `recentSurgery`.
 14. **Onboarding UI is feature-flagged.** `NEXT_PUBLIC_FF_ONBOARDING_V1` defaults true; set to `false` to fall back to `LegacyOnboarding`. Instant-rollback path for the multi-step flow. `filterRoutineCatalog` uses `level === "deep"` as a conservative safety-flag proxy; Phase 11 replaces it with a real caution-tag column on `routines`.
+15. **Stripe SDK only in `src/services/billing.ts`** (ADR-0005). Parallel to the `next-auth`-only-in-`src/lib/auth.ts` rule. `src/config/billing.ts` holds the server-side price allowlist; `createCheckoutSession()` throws `UNKNOWN_PRICE` when the submitted priceId isn't configured. Webhook handler uses the RAW request body (`request.text()`) for HMAC verification — never `.json()` first — and gates duplicate deliveries via `stripe_webhook_events.event_id` with `onConflictDoNothing`. Route `/api/webhooks/stripe` is pinned to `runtime = "nodejs"` + `dynamic = "force-dynamic"`.
+16. **Premium-routine gate is a catalog-level filter, not a paywall.** `GET /api/routines` resolves `isPremium(userId)` from `users.subscriptionStatus` and drops `isPremium=true` rows for viewers not in `{active, trialing}`. Free users and signed-out visitors never see premium rows. Phase 10 can add paywall UX (visible-but-locked) without schema changes by flipping `premiumUnlocked` usage from "filter" to "decorate".
 
 ---
 

@@ -26,6 +26,7 @@ const envSchema = z.object({
   STRIPE_WEBHOOK_SECRET: isProd ? prodRequired : devOptional,
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: isProd ? prodRequired : devOptional,
   STRIPE_PREMIUM_PRICE_ID: isProd ? prodRequired : devOptional,
+  STRIPE_PREMIUM_ANNUAL_PRICE_ID: devOptional,
 
   // Auth (Auth.js v5 — see ADR-0004)
   // Auth.js v5 reads AUTH_SECRET (not NEXTAUTH_SECRET). We keep NEXTAUTH_SECRET

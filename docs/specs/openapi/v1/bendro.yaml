@@ -41,6 +41,8 @@ tags:
     description: Workout sessions (authenticated in Phase 3+)
   - name: progress
     description: User progress & streaks
+  - name: billing
+    description: Stripe checkout + webhook (Phase 9)
 
 paths:
   /stretches:
@@ -280,6 +282,101 @@ paths:
                   data: { $ref: "#/components/schemas/UserProfile" }
         "400": { $ref: "#/components/responses/ValidationError" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /billing/checkout:
+    post:
+      tags: [billing]
+      summary: Start a Stripe Checkout Session
+      description: |
+        Creates a Stripe Checkout Session for the authenticated user on the
+        submitted `priceId`. The `priceId` is validated against a
+        server-side allowlist (`src/config/billing.ts`) — unknown prices
+        return 400 `VALIDATION_ERROR`. The authed user id is taken from
+        the session and is NEVER read from the request body.
+      operationId: createCheckoutSession
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [priceId]
+              additionalProperties: false
+              properties:
+                priceId:    { type: string, minLength: 1 }
+                successUrl: { type: string, format: uri }
+                cancelUrl:  { type: string, format: uri }
+      responses:
+        "201":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: object
+                    required: [url, sessionId]
+                    properties:
+                      url:       { type: string, format: uri, description: "Stripe-hosted checkout URL" }
+                      sessionId: { type: string, description: "Stripe Checkout Session id (cs_...)" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503":
+          description: Billing not configured on this environment (STRIPE_SECRET_KEY missing)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /webhooks/stripe:
+    post:
+      tags: [billing]
+      summary: Stripe webhook endpoint
+      description: |
+        Signed webhook deliveries from Stripe. The handler:
+          1. Reads the raw request body (REQUIRED for HMAC verification)
+          2. Verifies `Stripe-Signature` against STRIPE_WEBHOOK_SECRET
+          3. Inserts the event id into `stripe_webhook_events` with
+             `onConflictDoNothing` — duplicate deliveries short-circuit
+          4. Applies the subscription state change for relevant event types
+          5. Marks `processedAt` on the ledger row
+        Handled events: customer.subscription.created|updated|deleted,
+        invoice.payment_failed. Other event types are recorded but have
+        no domain side-effect.
+      operationId: stripeWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Raw Stripe Event envelope (not validated here — signature proves authenticity)
+      responses:
+        "200":
+          description: Event accepted (may be a duplicate)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received, duplicate, type, eventId]
+                properties:
+                  received:  { type: boolean, enum: [true] }
+                  duplicate: { type: boolean, description: "true when the event id was already in the ledger" }
+                  type:      { type: string, description: "Stripe event.type echoed back" }
+                  eventId:   { type: string, description: "Stripe evt_... id" }
+        "400":
+          description: Signature invalid, missing, or STRIPE_WEBHOOK_SECRET not set
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Handler failed — Stripe will retry the delivery
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
 components:
   securitySchemes:

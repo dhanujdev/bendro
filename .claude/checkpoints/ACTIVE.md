@@ -1,8 +1,9 @@
 # Active Checkpoint
 
-No active checkpoint. Phase 8 (Sessions & Streaks Loop) closed on 2026-04-18.
+No active checkpoint. Phase 9 (Billing — Stripe) closed on 2026-04-18.
 
-See `.claude/checkpoints/COMPLETED/phase-8.md` for the archived checkpoint.
+See `.claude/checkpoints/COMPLETED/phase-9.md` for the archived checkpoint.
 See `docs/PHASES.md` for the phase plan.
 
-Next phase: **Phase 9 — Billing (Stripe)** (security-lead + backend-lead, Opus gate).
+Next phase: **Phase 10 — Player polish** (frontend-lead). Camera UX,
+keyboard shortcuts, mobile layout, completion animation.

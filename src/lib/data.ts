@@ -89,6 +89,14 @@ export interface ListRoutinesFilter {
    * replace this with real caution-tag filtering.
    */
   safetyFlag?: boolean
+  /**
+   * When `false`, drop routines with `isPremium === true`. Set from the
+   * caller based on the viewer's Stripe subscription status — premium
+   * routines are hidden from free users entirely (not shown behind a
+   * paywall) so the library reflects what the user can actually start.
+   * `undefined` is treated as "no gating" (legacy callers, admin views).
+   */
+  premiumUnlocked?: boolean
   limit: number
   offset: number
 }
@@ -157,6 +165,9 @@ function applyRoutineFilters(
     out = out.filter((r) => r.level === filter.level)
   if (filter.isPremium !== undefined)
     out = out.filter((r) => r.isPremium === filter.isPremium)
+  // Premium gate: free users never see `isPremium=true` rows at all.
+  if (filter.premiumUnlocked === false)
+    out = out.filter((r) => !r.isPremium)
   if (filter.maxDurationSec !== undefined)
     out = out.filter((r) => r.totalDurationSec <= filter.maxDurationSec!)
   if (filter.durationBucket !== undefined)

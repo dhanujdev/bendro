@@ -10,6 +10,20 @@ vi.mock("@/lib/data", () => ({
   createRoutine: vi.fn(),
 }));
 
+// Mock the auth module so tests don't need Next.js runtime to resolve
+// next-auth's sub-module imports. Default to unauthenticated — the premium
+// gate resolves to `false` and premium routines get filtered out.
+vi.mock("@/lib/auth", () => ({
+  auth: vi.fn().mockResolvedValue(null),
+}));
+
+// Phase 9 premium gate — the routines route now calls `isPremium(userId)`
+// from the billing service. Default to false so the gate filters premium
+// routines for unauthenticated / free users in these integration tests.
+vi.mock("@/services/billing", () => ({
+  isPremium: vi.fn().mockResolvedValue(false),
+}));
+
 import { GET, POST } from "@/app/api/routines/route";
 import * as dataModule from "@/lib/data";
 import { NextRequest } from "next/server";

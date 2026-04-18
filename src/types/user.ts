@@ -41,6 +41,32 @@ export type CreateUser = z.infer<typeof CreateUserSchema>;
 export const UpdateUserSchema = CreateUserSchema.partial();
 export type UpdateUser = z.infer<typeof UpdateUserSchema>;
 
+// ─── Billing (Phase 9) ────────────────────────────────────────────────────────
+//
+// Request schema for POST /api/billing/checkout. priceId is validated against
+// the server-side allowlist inside `src/config/billing.ts`; the client can
+// only submit Stripe price ids we've configured, which closes the attack
+// vector where a buggy UI could redirect a user into an unrelated checkout.
+
+export const CreateCheckoutSessionBodySchema = z.object({
+  priceId: z.string().min(1),
+  successUrl: z.string().url().optional(),
+  cancelUrl: z.string().url().optional(),
+});
+export type CreateCheckoutSessionBody = z.infer<
+  typeof CreateCheckoutSessionBodySchema
+>;
+
+export const CreateCheckoutSessionResponseSchema = z.object({
+  data: z.object({
+    url: z.string().url(),
+    sessionId: z.string(),
+  }),
+});
+export type CreateCheckoutSessionResponse = z.infer<
+  typeof CreateCheckoutSessionResponseSchema
+>;
+
 export const StreakSchema = z.object({
   id: z.string().uuid(),
   userId: z.string().uuid(),
