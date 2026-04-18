@@ -4,16 +4,16 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 12 closeout)
+Last updated: 2026-04-18 (Phase 13 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 12 — Monetisation Polish / Paywall UX** closed on 2026-04-18. See
-`.claude/checkpoints/COMPLETED/phase-12.md`.
+**Phase 13 — Marketing Site & Pricing** closed on 2026-04-18. See
+`.claude/checkpoints/COMPLETED/phase-13.md`.
 
-Phases 0–12 all closed:
+Phases 0–13 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
@@ -27,14 +27,17 @@ Phases 0–12 all closed:
 - Phase 10 — Player polish (`.claude/checkpoints/COMPLETED/phase-10.md`)
 - Phase 11 — Health Safety & Disclaimers (`.claude/checkpoints/COMPLETED/phase-11.md`)
 - Phase 12 — Monetisation Polish / Paywall UX (`.claude/checkpoints/COMPLETED/phase-12.md`)
+- Phase 13 — Marketing Site & Pricing (`.claude/checkpoints/COMPLETED/phase-13.md`)
 
-Next phase: **Phase 13 — Marketing Site & Pricing** (frontend-lead).
-Top backlog items: landing page (`/`) hero + features + social proof,
-`/pricing` page with plan comparison and Stripe Checkout CTA wired to
-`/api/billing/checkout`, FAQ + testimonials, public SEO metadata/OG,
-footer legal links. No schema changes expected; Checkout endpoint
-already in place from Phase 9. After Phase 13: Phase 14 Playwright
-E2E / step bindings, Phase 15 Vercel deploy + observability.
+Next phase: **Phase 14 — E2E Coverage / Playwright step bindings** (qa-lead).
+Backlog built up across Phases 2–13 (step bindings deferred to Phase 14
+on every feature). Scope: install + configure Playwright, build a
+shared fixture that stubs `auth()` and seeds test data, run the
+existing 80+ Gherkin scenarios against a dev server. Primary targets:
+onboarding → home → library → player happy path, pricing → checkout
+redirect, account → portal redirect, camera-mode UX overlays. After
+Phase 14: Phase 15 Vercel deploy + observability + the `pnpm build`
+Auth.js Drizzle-adapter blocker.
 
 ---
 

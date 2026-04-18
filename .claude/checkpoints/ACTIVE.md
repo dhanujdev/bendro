@@ -1,32 +1,39 @@
 # Active Checkpoint
 
-**Phase 13 — Marketing Site & Pricing** (frontend-lead).
+**Phase 14 — E2E Coverage / Playwright step bindings** (qa-lead).
 
 Scope (subject to refinement):
-- Landing page (`/`) — hero, value prop, 3-4 feature blocks, testimonial
-  placeholder, CTA to /signin and /pricing. Replace the current
-  auto-redirect with a real marketing surface.
-- `/pricing` page — plan comparison (Free vs Premium), FAQ section,
-  Stripe Checkout CTA wired to `POST /api/billing/checkout` with the
-  premium priceId from env.
-- Public shell: `src/app/(marketing)/layout.tsx` with header + footer.
-  Footer with legal links (Terms, Privacy — stub pages if missing).
-- SEO: metadata, OG image, sitemap.ts, robots.ts.
-- No new external deps expected. No schema changes expected.
+- Install Playwright + add `pnpm e2e` script.
+- Shared fixture: dev server + stubbed `auth()` (env-flag or adapter
+  swap) + seeded catalog via the mock adapter path.
+- Wire step bindings for the existing Gherkin scenarios accumulated
+  across Phases 2–13 (≈80 scenarios across ~15 .feature files).
+- Primary smoke paths to lock in green:
+  - `/` → signed-out landing → `/pricing` → checkout redirect
+  - `/` → signed-in → `/home` → `/library` → `/player/{slug}`
+  - free → premium paywall decoration → `/account?upgrade=1`
+  - `/account` → `/api/billing/portal` → Stripe portal redirect
+  - onboarding → safety-gate → library is default-gentle
+  - camera-mode: unsupported / denied / no_camera overlays
+- CI: add an e2e job to the workflow (can be Phase 15 if timing is
+  tight, but prefer landing it in Phase 14).
 
-**Defer to Phase 14:** step-binding Playwright across the marketing
-funnel. We ship the static surface + Checkout wiring in Phase 13 and
-wire E2E in Phase 14.
+**Defer to Phase 15:**
+- Vercel deployment + env-var wiring.
+- `pnpm build` Auth.js Drizzle-adapter "Unsupported database type" fix
+  (blocks production build today). Likely related to `db` being read at
+  build-time static analysis; needs a `db` lazy-init pattern or a
+  build-time env guard.
+- Observability (Sentry / PostHog wiring from the trackEvent stub).
+- Production monitoring + alerting.
 
 ## Tracked TODOs
 
-- [ ] Landing page `/` with hero + features + CTA.
-- [ ] `/pricing` with plan comparison + Checkout button.
-- [ ] `(marketing)` layout with public nav + footer.
-- [ ] SEO: `app/sitemap.ts`, `app/robots.ts`, OG image.
-- [ ] Terms + Privacy stub pages (`/legal/terms`, `/legal/privacy`).
-- [ ] Unit + integration tests (Checkout CTA → Stripe URL).
-- [ ] Close-out: phase-13.md, CHANGELOG, AGENT_MEMORY, commit.
+- [ ] `pnpm add -D @playwright/test`, `pnpm exec playwright install`.
+- [ ] `playwright.config.ts` pointing at `http://localhost:3000`.
+- [ ] Shared fixture for auth stubbing + seeded catalog.
+- [ ] Step definitions for each feature file under `tests/features/**`.
+- [ ] Close-out: phase-14.md, CHANGELOG, AGENT_MEMORY, commit.
 
-See `.claude/checkpoints/COMPLETED/phase-12.md` for the archived prior phase.
+See `.claude/checkpoints/COMPLETED/phase-13.md` for the archived prior phase.
 See `docs/PHASES.md` for the full phase plan.

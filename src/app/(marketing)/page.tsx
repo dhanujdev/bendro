@@ -1,5 +1,7 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { ChevronRight, Zap, TrendingUp, Calendar } from "lucide-react"
+import { auth } from "@/lib/auth"
 
 const FEATURES = [
   {
@@ -19,7 +21,12 @@ const FEATURES = [
   },
 ]
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  const session = await auth()
+  if (session?.user?.id) {
+    redirect("/home")
+  }
+
   return (
     <>
       <section className="flex flex-col items-center justify-center text-center px-6 pt-24 pb-20 max-w-3xl mx-auto">
