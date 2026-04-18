@@ -155,8 +155,13 @@ export default function CameraPoseClient() {
       // Dynamic import keeps MediaPipe out of the initial client bundle.
       const { FilesetResolver, PoseLandmarker } = await import("@mediapipe/tasks-vision")
       const vision = await FilesetResolver.forVisionTasks(WASM_CDN)
+      // CPU delegate: slower (~15–20fps vs 30 on GPU) but avoids fighting
+      // R3F's avatar Canvas for browser WebGL context slots. With GPU
+      // delegate, Chrome evicts one of the WebGL contexts when Avatar mode
+      // is active and the avatar renders blank ("THREE.WebGLRenderer:
+      // Context Lost"). CPU lets MediaPipe and R3F coexist cleanly.
       landmarkerRef.current = await PoseLandmarker.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
+        baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },
         runningMode: "VIDEO",
         numPoses: 1,
       })

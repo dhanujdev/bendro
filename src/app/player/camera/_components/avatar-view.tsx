@@ -19,9 +19,9 @@
  * primitive-mesh body so the camera page never crashes on avatar mode.
  */
 
-import { Suspense, useRef, useState, type RefObject } from "react"
-import { Canvas, useFrame, useLoader } from "@react-three/fiber"
-import { Environment, OrbitControls } from "@react-three/drei"
+import { useEffect, useRef, useState, type RefObject } from "react"
+import { Canvas, useFrame, useThree } from "@react-three/fiber"
+import { OrbitControls } from "@react-three/drei"
 import * as THREE from "three"
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { VRMLoaderPlugin, type VRM } from "@pixiv/three-vrm"
@@ -57,15 +57,18 @@ export default function AvatarView({ landmarksRef, videoRef, url = DEFAULT_VRM_U
   return (
     <Canvas
       camera={{ position: [0, 1.3, 2.2], fov: 35 }}
-      gl={{ alpha: true, antialias: true }}
+      gl={{ alpha: true, antialias: true, powerPreference: "high-performance" }}
+      dpr={[1, 1.5]}
       style={{ background: "transparent" }}
     >
-      <ambientLight intensity={0.8} />
-      <directionalLight position={[1, 2, 3]} intensity={0.9} />
-      <Suspense fallback={<FallbackRig landmarksRef={landmarksRef} videoRef={videoRef} />}>
-        <VrmAvatar url={url} landmarksRef={landmarksRef} videoRef={videoRef} />
-      </Suspense>
-      <Environment preset="studio" />
+      <ContextLossHandler />
+      {/* Three-point lighting: sharper than an HDR environment map and
+          uses far less GPU memory — previously the drei <Environment>
+          preset pulled a 1K HDR that could evict the WebGL context. */}
+      <ambientLight intensity={0.6} />
+      <directionalLight position={[2, 3, 2]} intensity={1.1} />
+      <directionalLight position={[-2, 1, -1]} intensity={0.35} />
+      <VrmAvatar url={url} landmarksRef={landmarksRef} videoRef={videoRef} />
       <OrbitControls
         enablePan={false}
         enableZoom={false}
@@ -77,6 +80,33 @@ export default function AvatarView({ landmarksRef, videoRef, url = DEFAULT_VRM_U
   )
 }
 
+/**
+ * Browsers occasionally evict the WebGL context under memory pressure (common
+ * when MediaPipe's WASM backend is also allocating buffers on the same page).
+ * Calling `preventDefault()` on `webglcontextlost` lets us recover when the
+ * context is later restored, instead of leaving a permanently-blank canvas.
+ */
+function ContextLossHandler() {
+  const { gl } = useThree()
+  useEffect(() => {
+    const canvas = gl.domElement
+    const onLost = (e: Event) => {
+      e.preventDefault()
+      console.warn("[avatar] WebGL context lost — will auto-recover")
+    }
+    const onRestored = () => {
+      console.info("[avatar] WebGL context restored")
+    }
+    canvas.addEventListener("webglcontextlost", onLost)
+    canvas.addEventListener("webglcontextrestored", onRestored)
+    return () => {
+      canvas.removeEventListener("webglcontextlost", onLost)
+      canvas.removeEventListener("webglcontextrestored", onRestored)
+    }
+  }, [gl])
+  return null
+}
+
 interface VrmAvatarProps {
   url: string
   landmarksRef: RefObject<LandmarksRef>
@@ -84,14 +114,47 @@ interface VrmAvatarProps {
 }
 
 function VrmAvatar({ url, landmarksRef, videoRef }: VrmAvatarProps) {
-  // Register the VRM plugin via the useLoader extensions callback. This is
-  // the R3F-idiomatic way to augment a loader; the VRM ends up on
-  // `gltf.userData.vrm` per the three-vrm plugin contract.
-  const gltf = useLoader(GLTFLoader, url, (loader) => {
-    loader.register((parser) => new VRMLoaderPlugin(parser))
-  })
+  // Load the VRM directly in an effect instead of going through R3F's
+  // `useLoader` Suspense cache. The cache was getting stuck on stale failed
+  // loads during development, leaving Suspense showing the fallback forever.
+  const [vrm, setVrm] = useState<VRM | null>(null)
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading")
+  const [err, setErr] = useState<string | null>(null)
 
-  const vrm = (gltf as unknown as { userData: { vrm?: VRM } }).userData.vrm ?? null
+  useEffect(() => {
+    let cancelled = false
+    const loader = new GLTFLoader()
+    loader.register((parser) => new VRMLoaderPlugin(parser))
+    loader.load(
+      url,
+      (gltf) => {
+        if (cancelled) return
+        const loadedVrm = (gltf as unknown as { userData: { vrm?: VRM } }).userData.vrm
+        if (!loadedVrm) {
+          setStatus("error")
+          setErr("Plugin produced no VRM — file may not be a valid VRM 0/1 model")
+          console.error("[avatar] no .userData.vrm on loaded GLTF", gltf)
+          return
+        }
+        // Pixiv recommends these two perf tweaks for VRMs in three-vrm v3.
+        loadedVrm.scene.traverse((obj) => {
+          obj.frustumCulled = false
+        })
+        setVrm(loadedVrm)
+        setStatus("ready")
+      },
+      undefined,
+      (error) => {
+        if (cancelled) return
+        console.error("[avatar] VRM load error", error)
+        setStatus("error")
+        setErr(error instanceof Error ? error.message : String(error))
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [url])
 
   useFrame((_, delta) => {
     if (!vrm) return
@@ -101,9 +164,13 @@ function VrmAvatar({ url, landmarksRef, videoRef }: VrmAvatarProps) {
     vrm.update(delta)
   })
 
+  if (status === "loading" || status === "error") {
+    if (status === "error") console.warn("[avatar] falling back to primitive rig:", err)
+    return <FallbackRig landmarksRef={landmarksRef} videoRef={videoRef} />
+  }
   if (!vrm) return null
   // Face the camera. Many VRMs ship facing +Z; rotate 180° so they look at
-  // the viewer. Setting via the JSX prop avoids mutating the useLoader result.
+  // the viewer. Setting via the JSX prop avoids mutating the loaded object.
   return <primitive object={vrm.scene} rotation={[0, Math.PI, 0]} />
 }
 
