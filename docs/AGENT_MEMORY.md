@@ -4,27 +4,31 @@
 > Updated by the `session-handoff` skill whenever phase or decisions change.
 > When this file conflicts with `CLAUDE.md`, `CLAUDE.md` wins.
 
-Last updated: 2026-04-18 (Phase 4 closeout)
+Last updated: 2026-04-18 (Phase 5 closeout)
 
 ---
 
 ## Current Phase
 
-**Phase 4 — Player Stability** closed on 2026-04-18. See
-`.claude/checkpoints/COMPLETED/phase-4.md`.
+**Phase 5 — DB Toggle Hardening** closed on 2026-04-18. See
+`.claude/checkpoints/COMPLETED/phase-5.md`.
 
-Phases 0–4 all closed:
+Phases 0–5 all closed:
 - Phase 0 — Foundation & Framework Port (`.claude/checkpoints/COMPLETED/phase-0.md`)
 - Phase 1 — Test Coverage Baseline (`.claude/checkpoints/COMPLETED/phase-1.md`)
 - Phase 2 — API Contract & Validation (`.claude/checkpoints/COMPLETED/phase-2.md`)
 - Phase 3 — Auth / NextAuth (`.claude/checkpoints/COMPLETED/phase-3.md`)
 - Phase 4 — Player Stability (`.claude/checkpoints/COMPLETED/phase-4.md`)
+- Phase 5 — DB Toggle Hardening (`.claude/checkpoints/COMPLETED/phase-5.md`)
 
-Next phase: **Phase 5 — DB Toggle Hardening (mock ↔ Neon)** (backend-lead).
-Top backlog items: explicit `DataAdapter` type in `src/lib/data.ts`,
-`pnpm db:generate` → review → `pnpm db:migrate` flow against Neon,
-preview-branch wiring for Vercel previews, integration suite runnable
-against both mock and real Postgres (docker compose for CI).
+Next phase: **Phase 6 — Onboarding & Personalization**
+(frontend-lead + backend-lead).
+Top backlog items: onboarding form under `src/app/onboarding/*` (goal
+capture + focus/avoid body-area selection + pre-existing-condition gate
+per `HEALTH_RULES.md`), `src/services/personalization.ts` tightened from
+stub to real filter, `GET /api/me` + `PATCH /api/me`,
+`ONBOARDING_V1_ENABLED` feature flag in `src/config/features.ts`, BDD +
+Playwright-scaffold coverage of the onboarding happy path.
 
 ---
 
@@ -114,6 +118,8 @@ Highlights:
 8. **Auth.js v5 + Drizzle adapter, database sessions.** `src/lib/auth.ts` is the only file that imports `next-auth` (parallel to the Stripe-only-in-`services/billing.ts` rule). See `docs/ADR/ADR-0004-authjs-v5-drizzle.md`.
 9. **`userId` is server-sourced.** Authenticated routes read `userId` from `auth()` and ignore any value in the request body or query string. Cross-tenant access returns `404 NOT_FOUND`, not `403`, to prevent session-id enumeration.
 10. **Auth sessions table renamed to `auth_sessions`** to avoid collision with workout `sessions`. Passed to `DrizzleAdapter` via `sessionsTable: authSessions`. (D-006)
+11. **Local Postgres 16 via `docker-compose.db.yml`** for dev + CI parity with Neon (`bendro/bendro/bendro` on `localhost:5432`). Drizzle migrations work unchanged between vanilla Postgres and Neon serverless. `pnpm db:local:up | down | reset` wraps the container. (D-007)
+12. **`DataAdapter` interface via `typeof`** exported from `src/lib/data.ts`; `isFallbackError` / `shortReason` extracted to `src/lib/data-fallback.ts` so the fallback classifier is unit-tested independently. Adding a new data operation now forces the function + the interface to move together. (D-008)
 
 ---
 

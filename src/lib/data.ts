@@ -31,6 +31,7 @@ import {
   findMockSession,
   type MockProgress,
 } from "@/lib/mock-data"
+import { isFallbackError, shortReason } from "@/lib/data-fallback"
 
 // ─── Fallback bookkeeping ─────────────────────────────────────────────────────
 
@@ -43,27 +44,6 @@ function logFallbackOnce(op: string, err: unknown) {
   console.info(
     `[data] ${op}: using mock-data fallback (${shortReason(msg)}). Set DATABASE_URL to hit Neon.`,
   )
-}
-
-function shortReason(msg: string): string {
-  if (/DATABASE_URL is not set/i.test(msg)) return "DATABASE_URL not set"
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg))
-    return "db unreachable"
-  return msg.slice(0, 80)
-}
-
-/**
- * True if the error indicates we should fall back to mocks (missing env or
- * a connection-level failure). Anything else — e.g. a Zod/validation error
- * inside service code — should surface instead of being silently swallowed.
- */
-function isFallbackError(err: unknown): boolean {
-  if (!(err instanceof Error)) return false
-  const m = err.message
-  if (/DATABASE_URL is not set/i.test(m)) return true
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(m)) return true
-  if (/getaddrinfo|connect\s/i.test(m)) return true
-  return false
 }
 
 async function withFallback<T>(
@@ -446,4 +426,44 @@ async function computeDbProgress(
     activeDays: Array.from(activeDaySet),
     history,
   }
+}
+
+// ─── Adapter contract ────────────────────────────────────────────────────────
+
+/**
+ * `DataAdapter` is the contract every read/write path through the API
+ * depends on. There is one canonical implementation (`dataAdapter` below)
+ * that tries the Drizzle/Neon service layer first and falls back to the
+ * in-memory mock when the DB is missing or unreachable.
+ *
+ * The named exports above are the ergonomic surface callers use. This
+ * interface + object exists so:
+ *
+ *   1. The compiler pins the exact shape of the adapter (no more "forgot
+ *      to add a function to both impls" bugs when the data layer grows).
+ *   2. Tests that want to stub the entire data layer can do
+ *      `vi.mock("@/lib/data", () => ({ dataAdapter: fake, ...stubs }))`.
+ *   3. Future in-process variants (e.g. a fully-mocked Neon client for
+ *      CI integration tests) can be swapped in behind the same contract.
+ */
+export interface DataAdapter {
+  getRoutines: typeof getRoutines
+  getRoutineByIdOrSlug: typeof getRoutineByIdOrSlug
+  createRoutine: typeof createRoutine
+  listStretches: typeof listStretches
+  startSession: typeof startSession
+  getSessionById: typeof getSessionById
+  updateSession: typeof updateSession
+  getProgress: typeof getProgress
+}
+
+export const dataAdapter: DataAdapter = {
+  getRoutines,
+  getRoutineByIdOrSlug,
+  createRoutine,
+  listStretches,
+  startSession,
+  getSessionById,
+  updateSession,
+  getProgress,
 }

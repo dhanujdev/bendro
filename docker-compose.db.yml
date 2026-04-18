@@ -1,0 +1,36 @@
+version: "3.9"
+
+# Local Postgres for the mock ↔ DB toggle.
+#
+#   pnpm db:local:up     → start postgres on localhost:5432 (detached)
+#   pnpm db:local:down   → stop + remove the container (volume preserved)
+#   pnpm db:local:reset  → stop, drop the volume, start fresh (destructive)
+#
+# Set these in .env.local to point the app at this container:
+#   DATABASE_URL=postgresql://bendro:bendro@localhost:5432/bendro
+#
+# Neon is the production target; this compose file is for local dev + CI.
+# The schema is the same — Drizzle migrations work against vanilla Postgres
+# 16 and Neon's serverless flavor interchangeably.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bendro-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: bendro
+      POSTGRES_PASSWORD: bendro
+      POSTGRES_DB: bendro
+    ports:
+      - "5432:5432"
+    volumes:
+      - bendro-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bendro -d bendro"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  bendro-pgdata:

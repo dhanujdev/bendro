@@ -34,3 +34,18 @@ export const db = new Proxy({} as Drizzle, {
 })
 
 export type DB = Drizzle
+
+/**
+ * True if `DATABASE_URL` is set to a non-empty value. The single source of
+ * truth for "is a DB configured". Used by callers that need to decide
+ * up front whether to attempt a DB call vs. go straight to mock data —
+ * e.g. future CLI tooling, seed scripts, or test setup.
+ *
+ * `src/lib/data.ts` deliberately does NOT call this helper — it relies on
+ * the service layer throwing with a recognizable message and on
+ * `isFallbackError` to decide. That way a partially-misconfigured env
+ * (URL set but DNS unreachable) also falls back, instead of hanging.
+ */
+export function hasDatabaseUrl(): boolean {
+  return Boolean(process.env.DATABASE_URL && process.env.DATABASE_URL.length > 0)
+}

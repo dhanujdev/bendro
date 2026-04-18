@@ -57,6 +57,22 @@ Last updated: 2026-04-18
 - **Why:** Explicit naming prevents a Phase 8 bug where a query accidentally selects from the wrong `sessions` table. The cost — one line of adapter config — is trivial.
 - **Consequence:** Every future reference to the NextAuth session table uses the `auth_sessions` name. Workout session code is unchanged.
 
+## D-007 — Local Postgres via docker compose; Neon for preview + prod
+- **Date:** 2026-04-18 (session 3, Phase 5)
+- **Decided by:** backend-lead
+- **Context:** Phase 5 hardens the mock ↔ DB toggle. The integration suite (Phase 14 target) needs a real Postgres to run against, and contributors need a way to exercise the Drizzle path locally without a Neon account.
+- **Choice:** Ship `docker-compose.db.yml` with a vanilla Postgres 16 container. `pnpm db:local:up` / `down` / `reset` scripts wrap it. Neon stays the target for Vercel preview and production deployments.
+- **Why:** Drizzle migrations work against vanilla Postgres 16 and Neon's serverless flavor interchangeably; the schema has no Neon-specific features yet. A local container gives parity testing without external dependencies. Reserving Neon for preview/prod keeps the preview-branch isolation benefit intact.
+- **Consequence:** `docs/DB_TOGGLE.md` is the runbook. Future CI (Phase 15) can reuse the same compose file. Seed remains idempotent (`onConflictDoNothing`) so re-running against a shared local DB is safe.
+
+## D-008 — Formalize `DataAdapter` interface in `src/lib/data.ts`
+- **Date:** 2026-04-18 (session 3, Phase 5)
+- **Decided by:** backend-lead
+- **Context:** `src/lib/data.ts` exports loose functions. Adding a new operation was easy to forget to mirror; and tests that wanted to stub the entire data layer had to stub each export individually.
+- **Choice:** Add an explicit `DataAdapter` interface (using `typeof` for each function) plus a `dataAdapter` object that satisfies it. Existing named exports continue to work; callers choose between named imports and `dataAdapter` based on need.
+- **Why:** The `typeof` approach gives a compile-time contract without duplicating type definitions. Tests can `vi.mock("@/lib/data", ...)` to swap the adapter. Future CI integration-test variants (fully mocked Neon client) swap in behind the same shape.
+- **Consequence:** Adding a new operation requires updating both the function and the `DataAdapter` interface — the compiler catches drift. Also extracted `isFallbackError` / `shortReason` to `src/lib/data-fallback.ts` so the classifier is unit-tested independently (11 new tests).
+
 ---
 
 ## Format for New Entries

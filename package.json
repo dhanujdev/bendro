@@ -15,7 +15,10 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/db/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:local:up": "docker compose -f docker-compose.db.yml up -d",
+    "db:local:down": "docker compose -f docker-compose.db.yml down",
+    "db:local:reset": "docker compose -f docker-compose.db.yml down -v && docker compose -f docker-compose.db.yml up -d"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.2",
