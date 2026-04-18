@@ -1,42 +1,49 @@
-import { z } from "zod"
+import { z } from "zod";
 
-export const BodyArea = z.enum([
+export const BodyAreaSchema = z.enum([
   "neck",
   "shoulders",
   "chest",
-  "back",
+  "upper_back",
   "lower_back",
   "hips",
-  "hamstrings",
+  "glutes",
   "quads",
+  "hamstrings",
   "calves",
   "ankles",
+  "wrists",
   "full_body",
-])
-export type BodyArea = z.infer<typeof BodyArea>
+]);
+export type BodyArea = z.infer<typeof BodyAreaSchema>;
 
-export const Intensity = z.enum(["gentle", "moderate", "deep"])
-export type Intensity = z.infer<typeof Intensity>
+export const IntensitySchema = z.enum(["gentle", "moderate", "deep"]);
+export type Intensity = z.infer<typeof IntensitySchema>;
 
 export const StretchSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  description: z.string(),
-  bodyArea: BodyArea,
-  intensity: Intensity,
-  durationSeconds: z.number().int().positive(),
-  instructions: z.array(z.string()),
-  imageUrl: z.string().optional(),
-  videoUrl: z.string().optional(),
-  benefits: z.array(z.string()),
-  contraindications: z.array(z.string()).optional(),
-})
-export type Stretch = z.infer<typeof StretchSchema>
+  id: z.string().uuid(),
+  slug: z.string().min(1),
+  name: z.string().min(1),
+  instructions: z.string().min(1),
+  cues: z.array(z.string()),
+  cautions: z.array(z.string()),
+  bodyAreas: z.array(BodyAreaSchema),
+  intensity: IntensitySchema,
+  bilateral: z.boolean(),
+  defaultDurationSec: z.number().int().positive(),
+  mediaUrl: z.string().url().nullable(),
+  thumbnailUrl: z.string().url().nullable(),
+  createdAt: z.coerce.date(),
+  updatedAt: z.coerce.date(),
+});
+export type StretchType = z.infer<typeof StretchSchema>;
 
-export const StretchListQuerySchema = z.object({
-  bodyArea: BodyArea.optional(),
-  intensity: Intensity.optional(),
-  limit: z.coerce.number().int().positive().max(100).default(20),
-  offset: z.coerce.number().int().nonnegative().default(0),
-})
-export type StretchListQuery = z.infer<typeof StretchListQuerySchema>
+export const CreateStretchSchema = StretchSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type CreateStretch = z.infer<typeof CreateStretchSchema>;
+
+export const UpdateStretchSchema = CreateStretchSchema.partial();
+export type UpdateStretch = z.infer<typeof UpdateStretchSchema>;

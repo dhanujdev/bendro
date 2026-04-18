@@ -1,15 +1,16 @@
 import PlayerClient from "../_components/player-client"
-import { MOCK_ROUTINE_STRETCHES, MOCK_ROUTINES } from "@/lib/mock-data"
+import { MOCK_ROUTINES, findRoutineByIdOrSlug } from "@/lib/mock-data"
 import { notFound } from "next/navigation"
 
 export default async function PlayerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const routine = MOCK_ROUTINE_STRETCHES[id]
+  const routine = findRoutineByIdOrSlug(id)
   if (!routine) notFound()
 
   return <PlayerClient routine={routine} />
 }
 
 export async function generateStaticParams() {
-  return MOCK_ROUTINES.map((r) => ({ id: r.id }))
+  // Pre-render by slug + the /demo shortcut.
+  return [{ id: "demo" }, ...MOCK_ROUTINES.map((r) => ({ id: r.slug }))]
 }

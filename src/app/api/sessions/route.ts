@@ -1,4 +1,4 @@
-import { SessionSchema, CreateSessionSchema } from "@/types"
+import { SessionSchema, StartSessionSchema } from "@/types"
 import { createMockSession } from "@/lib/mock-data"
 
 export async function POST(request: Request) {
@@ -9,12 +9,15 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  const parsed = CreateSessionSchema.safeParse(body)
+  const parsed = StartSessionSchema.safeParse(body)
   if (!parsed.success) {
-    return Response.json({ error: "Validation failed", issues: parsed.error.issues }, { status: 422 })
+    return Response.json(
+      { error: "Validation failed", issues: parsed.error.issues },
+      { status: 422 },
+    )
   }
 
-  const session = createMockSession(parsed.data.routineId)
+  const session = createMockSession(parsed.data)
   const validated = SessionSchema.parse(session)
   return Response.json({ data: validated }, { status: 201 })
 }

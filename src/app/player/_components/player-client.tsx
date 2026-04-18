@@ -13,14 +13,14 @@ export default function PlayerClient({ routine }: { routine: RoutineWithStretche
   const [timeLeft, setTimeLeft] = useState(0)
   const [paused, setPaused] = useState(false)
 
-  const currentStretch = routine.stretches[currentIndex]
-  const isLast = currentIndex === routine.stretches.length - 1
+  const current = routine.routineStretches[currentIndex]
+  const isLast = currentIndex === routine.routineStretches.length - 1
 
   const startStretch = useCallback(() => {
-    setTimeLeft(currentStretch.durationSeconds)
+    setTimeLeft(current.durationSec)
     setPhase("stretching")
     setPaused(false)
-  }, [currentStretch])
+  }, [current])
 
   const advanceOrComplete = useCallback(() => {
     if (isLast) {
@@ -41,8 +41,8 @@ export default function PlayerClient({ routine }: { routine: RoutineWithStretche
     return () => clearInterval(id)
   }, [phase, paused, timeLeft, advanceOrComplete])
 
-  const progress = currentStretch
-    ? ((currentStretch.durationSeconds - timeLeft) / currentStretch.durationSeconds) * 100
+  const progress = current
+    ? ((current.durationSec - timeLeft) / current.durationSec) * 100
     : 0
 
   if (phase === "complete") {
@@ -51,7 +51,7 @@ export default function PlayerClient({ routine }: { routine: RoutineWithStretche
         <div className="text-6xl mb-6">🎉</div>
         <h1 className="text-3xl font-bold text-white mb-2">Great work!</h1>
         <p className="text-white/50 mb-2">You completed</p>
-        <p className="text-[#7C5CFC] font-semibold text-lg mb-8">{routine.name}</p>
+        <p className="text-[#7C5CFC] font-semibold text-lg mb-8">{routine.title}</p>
         <div className="flex flex-col gap-3 w-full max-w-xs">
           <Link
             href="/home"
@@ -77,21 +77,23 @@ export default function PlayerClient({ routine }: { routine: RoutineWithStretche
           <Link href="/home" className="text-white/50 hover:text-white transition-colors">
             <X className="size-6" />
           </Link>
-          <span className="text-sm text-white/50">{routine.stretchCount} stretches</span>
+          <span className="text-sm text-white/50">
+            {routine.routineStretches.length} stretches
+          </span>
         </div>
 
         <div className="flex-1 flex flex-col justify-center">
-          <h1 className="text-3xl font-bold text-white mb-2">{routine.name}</h1>
-          <p className="text-white/50 mb-8">{routine.description}</p>
+          <h1 className="text-3xl font-bold text-white mb-2">{routine.title}</h1>
+          <p className="text-white/50 mb-8">{routine.description ?? ""}</p>
 
           <div className="flex flex-col gap-3 mb-10">
-            {routine.stretches.map((rs, i) => (
-              <div key={rs.stretch.id} className="flex items-center gap-3">
+            {routine.routineStretches.map((rs, i) => (
+              <div key={rs.id} className="flex items-center gap-3">
                 <span className="size-6 rounded-full bg-white/10 flex items-center justify-center text-xs text-white/50">
                   {i + 1}
                 </span>
                 <span className="text-sm text-white/80">{rs.stretch.name}</span>
-                <span className="ml-auto text-xs text-white/40">{rs.durationSeconds}s</span>
+                <span className="ml-auto text-xs text-white/40">{rs.durationSec}s</span>
               </div>
             ))}
           </div>
@@ -112,7 +114,7 @@ export default function PlayerClient({ routine }: { routine: RoutineWithStretche
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-[#0F0F14] px-6 text-center">
         <p className="text-white/50 text-sm mb-2">Next up</p>
-        <h2 className="text-2xl font-bold text-white mb-6">{currentStretch.stretch.name}</h2>
+        <h2 className="text-2xl font-bold text-white mb-6">{current.stretch.name}</h2>
         <button
           onClick={startStretch}
           className="flex items-center justify-center gap-2 rounded-2xl bg-[#7C5CFC] hover:bg-[#6B4EE0] px-8 py-4 text-white font-semibold transition-all active:scale-95"
@@ -131,7 +133,7 @@ export default function PlayerClient({ routine }: { routine: RoutineWithStretche
           <X className="size-5" />
         </Link>
         <span className="text-sm text-white/40">
-          {currentIndex + 1} / {routine.stretches.length}
+          {currentIndex + 1} / {routine.routineStretches.length}
         </span>
       </div>
 
@@ -144,19 +146,21 @@ export default function PlayerClient({ routine }: { routine: RoutineWithStretche
 
       <div className="flex-1 flex flex-col justify-center">
         <p className="text-[#7C5CFC] text-sm font-medium mb-2 capitalize">
-          {currentStretch.stretch.bodyArea.replace("_", " ")}
+          {current.stretch.bodyAreas.map((a) => a.replace("_", " ")).join(" · ")}
         </p>
-        <h2 className="text-3xl font-bold text-white mb-4">{currentStretch.stretch.name}</h2>
-        <p className="text-white/50 text-sm mb-8">{currentStretch.stretch.description}</p>
+        <h2 className="text-3xl font-bold text-white mb-4">{current.stretch.name}</h2>
+        <p className="text-white/60 text-sm mb-6 leading-relaxed">{current.stretch.instructions}</p>
 
-        <div className="flex flex-col gap-2 mb-10">
-          {currentStretch.stretch.instructions.map((step, i) => (
-            <div key={i} className="flex items-start gap-3 text-sm text-white/70">
-              <span className="text-[#7C5CFC] font-bold shrink-0">{i + 1}.</span>
-              <span>{step}</span>
-            </div>
-          ))}
-        </div>
+        {current.stretch.cues.length > 0 && (
+          <div className="flex flex-col gap-2 mb-6">
+            {current.stretch.cues.map((cue, i) => (
+              <div key={i} className="flex items-start gap-3 text-sm text-white/70">
+                <span className="text-[#7C5CFC] font-bold shrink-0">·</span>
+                <span>{cue}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col items-center gap-6">

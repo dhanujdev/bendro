@@ -1,13 +1,18 @@
 import Link from "next/link"
 import { Play, Flame, Clock, Zap, Camera } from "lucide-react"
+import { MOCK_ROUTINES, GOAL_META } from "@/lib/mock-data"
 
-const FEATURED_ROUTINES = [
-  { id: "routine-1", name: "Morning Wake-Up", duration: 10, goal: "morning_wakeup", emoji: "☀️" },
-  { id: "routine-2", name: "Desk Reset", duration: 8, goal: "desk_reset", emoji: "💻" },
-  { id: "routine-5", name: "Bedtime Wind Down", duration: 10, goal: "sleep", emoji: "🌙" },
+const FEATURED_SLUGS = [
+  "morning-wake-up-flow",
+  "desk-worker-relief",
+  "bedtime-wind-down",
 ]
 
 export default function HomePage() {
+  const featured = FEATURED_SLUGS
+    .map((slug) => MOCK_ROUTINES.find((r) => r.slug === slug))
+    .filter((r): r is NonNullable<typeof r> => !!r)
+
   return (
     <div className="flex flex-col min-h-full px-4 py-6 max-w-lg mx-auto">
       <header className="mb-8">
@@ -66,24 +71,29 @@ export default function HomePage() {
       <section>
         <h2 className="text-lg font-semibold text-white mb-4">Recommended for you</h2>
         <div className="flex flex-col gap-3">
-          {FEATURED_ROUTINES.map((routine) => (
-            <Link
-              key={routine.id}
-              href={`/player/${routine.id}`}
-              className="flex items-center justify-between rounded-xl bg-white/5 border border-white/10 p-4 hover:bg-white/10 hover:border-[#7C5CFC]/40 transition-all group"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">{routine.emoji}</span>
-                <div>
-                  <p className="font-medium text-white group-hover:text-[#7C5CFC] transition-colors">
-                    {routine.name}
-                  </p>
-                  <p className="text-xs text-white/50">{routine.duration} min</p>
+          {featured.map((routine) => {
+            const meta = GOAL_META[routine.goal]
+            return (
+              <Link
+                key={routine.id}
+                href={`/player/${routine.slug}`}
+                className="flex items-center justify-between rounded-xl bg-white/5 border border-white/10 p-4 hover:bg-white/10 hover:border-[#7C5CFC]/40 transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{meta.emoji}</span>
+                  <div>
+                    <p className="font-medium text-white group-hover:text-[#7C5CFC] transition-colors">
+                      {routine.title}
+                    </p>
+                    <p className="text-xs text-white/50">
+                      {Math.round(routine.totalDurationSec / 60)} min · {meta.label}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <Play className="size-4 text-white/30 group-hover:text-[#7C5CFC] transition-colors" />
-            </Link>
-          ))}
+                <Play className="size-4 text-white/30 group-hover:text-[#7C5CFC] transition-colors" />
+              </Link>
+            )
+          })}
         </div>
       </section>
     </div>

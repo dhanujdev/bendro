@@ -1,7 +1,19 @@
-import { SessionSchema, UpdateSessionSchema } from "@/types"
+import { z } from "zod"
+import { SessionSchema, PainFeedbackSchema } from "@/types"
 import { updateMockSession } from "@/lib/mock-data"
 
-export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
+const UpdateSessionBodySchema = z.object({
+  durationDoneSec: z.number().int().nonnegative().optional(),
+  completionPct: z.number().min(0).max(100).optional(),
+  skippedStretchIds: z.array(z.string().uuid()).optional(),
+  painFeedback: PainFeedbackSchema.optional(),
+  completed: z.boolean().optional(),
+})
+
+export async function PATCH(
+  request: Request,
+  ctx: { params: Promise<{ id: string }> },
+) {
   const { id } = await ctx.params
 
   let body: unknown
@@ -11,12 +23,20 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     return Response.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  const parsed = UpdateSessionSchema.safeParse(body)
+  const parsed = UpdateSessionBodySchema.safeParse(body)
   if (!parsed.success) {
-    return Response.json({ error: "Validation failed", issues: parsed.error.issues }, { status: 422 })
+    return Response.json(
+      { error: "Validation failed", issues: parsed.error.issues },
+      { status: 422 },
+    )
   }
 
-  const session = updateMockSession(id, parsed.data)
+  const { completed, ...patch } = parsed.data
+
+  const session = updateMockSession(id, {
+    ...patch,
+    ...(completed ? { completedAt: new Date() } : {}),
+  })
   if (!session) {
     return Response.json({ error: "Session not found" }, { status: 404 })
   }

@@ -1,303 +1,439 @@
-import type { Stretch, Routine, RoutineWithStretches, Session, Progress } from "@/types"
+/**
+ * In-memory mock data, shape-matched to the foundation Zod schemas in
+ * `src/types/`. Used by the API routes when `DATABASE_URL` isn't configured.
+ *
+ * When you wire up Neon + run `pnpm db:migrate && pnpm db:seed`, you can
+ * swap the API routes to call `src/services/*` directly and delete this file.
+ */
 
-export const MOCK_STRETCHES: Stretch[] = [
+import type {
+  StretchType,
+  RoutineType,
+  RoutineWithStretches,
+  SessionType,
+  StartSession,
+  Goal,
+} from "@/types"
+
+// Stable UUIDs so routines can reference stretches deterministically.
+const ID = {
+  neckTilt: "11111111-1111-4000-8000-000000000001",
+  chestOpener: "11111111-1111-4000-8000-000000000002",
+  catCow: "11111111-1111-4000-8000-000000000003",
+  hipFlexor: "11111111-1111-4000-8000-000000000004",
+  forwardFold: "11111111-1111-4000-8000-000000000005",
+  childPose: "11111111-1111-4000-8000-000000000006",
+  quadStretch: "11111111-1111-4000-8000-000000000007",
+  shoulderCross: "11111111-1111-4000-8000-000000000008",
+
+  morningFlow: "22222222-2222-4000-8000-000000000001",
+  deskReset: "22222222-2222-4000-8000-000000000002",
+  lowerBackRelief: "22222222-2222-4000-8000-000000000003",
+  postWorkout: "22222222-2222-4000-8000-000000000004",
+  bedtime: "22222222-2222-4000-8000-000000000005",
+  demo: "22222222-2222-4000-8000-000000000006",
+} as const
+
+const NOW = new Date("2024-01-01T00:00:00Z")
+
+// ─── Stretches ────────────────────────────────────────────────────────────────
+
+export const MOCK_STRETCHES: StretchType[] = [
   {
-    id: "stretch-1",
+    id: ID.neckTilt,
+    slug: "neck-side-tilt",
     name: "Neck Side Tilt",
-    description: "Gently tilt your head to each side to release neck tension.",
-    bodyArea: "neck",
+    instructions:
+      "Sit tall with shoulders relaxed. Slowly tilt your right ear toward your right shoulder. Hold 15 seconds, feeling the stretch on the left side of your neck. Return to center, then repeat on the other side.",
+    cues: ["Shoulders down and away from ears", "Breathe slowly through the nose"],
+    cautions: ["Stop immediately if you feel sharp pain"],
+    bodyAreas: ["neck"],
     intensity: "gentle",
-    durationSeconds: 30,
-    instructions: [
-      "Sit tall with shoulders relaxed",
-      "Slowly tilt your right ear toward your right shoulder",
-      "Hold for 15 seconds, feeling the stretch on the left side of your neck",
-      "Return to center, then repeat on the other side",
-    ],
-    benefits: ["Reduces neck tension", "Improves neck mobility", "Relieves headaches"],
+    bilateral: true,
+    defaultDurationSec: 30,
+    mediaUrl: null,
+    thumbnailUrl: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "stretch-2",
-    name: "Chest Opener",
-    description: "Open up tight chest muscles from sitting at a desk.",
-    bodyArea: "chest",
+    id: ID.chestOpener,
+    slug: "doorway-chest-opener",
+    name: "Doorway Chest Opener",
+    instructions:
+      "Stand in a doorway with arms at 90 degrees. Place forearms on the frame. Gently step forward until you feel a stretch across your chest. Hold, breathing deeply.",
+    cues: ["Keep core engaged", "Don't arch the lower back"],
+    cautions: ["Skip if you have a shoulder impingement"],
+    bodyAreas: ["chest", "shoulders"],
     intensity: "moderate",
-    durationSeconds: 45,
-    instructions: [
-      "Stand in a doorway with arms at 90 degrees",
-      "Place forearms on the door frame",
-      "Gently lean forward until you feel a stretch across your chest",
-      "Hold for 30 seconds, breathing deeply",
-    ],
-    benefits: ["Opens chest", "Improves posture", "Counteracts rounded shoulders"],
+    bilateral: false,
+    defaultDurationSec: 45,
+    mediaUrl: null,
+    thumbnailUrl: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "stretch-3",
+    id: ID.catCow,
+    slug: "cat-cow",
     name: "Cat-Cow Stretch",
-    description: "A flowing movement to mobilize the entire spine.",
-    bodyArea: "back",
+    instructions:
+      "Start on hands and knees. Inhale: drop belly, lift head and tailbone (Cow). Exhale: round spine to ceiling (Cat). Flow with your breath for 10 cycles.",
+    cues: ["Move with the breath", "Keep shoulders away from ears"],
+    cautions: [],
+    bodyAreas: ["upper_back", "lower_back"],
     intensity: "gentle",
-    durationSeconds: 60,
-    instructions: [
-      "Start on hands and knees, wrists under shoulders, knees under hips",
-      "Inhale: drop your belly, lift your head and tailbone (Cow)",
-      "Exhale: round your spine toward the ceiling, tuck chin and tailbone (Cat)",
-      "Flow between positions with your breath for 10 cycles",
-    ],
-    benefits: ["Mobilizes spine", "Relieves back tension", "Improves posture"],
+    bilateral: false,
+    defaultDurationSec: 60,
+    mediaUrl: null,
+    thumbnailUrl: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "stretch-4",
+    id: ID.hipFlexor,
+    slug: "hip-flexor-lunge",
     name: "Hip Flexor Lunge",
-    description: "Release tight hip flexors from prolonged sitting.",
-    bodyArea: "hips",
+    instructions:
+      "Step right foot forward into a lunge. Lower left knee to the floor. Shift weight forward until you feel a stretch in the front of the left hip. Hold 30 seconds, then switch.",
+    cues: ["Square hips forward", "Keep front knee over ankle"],
+    cautions: ["Place padding under the back knee"],
+    bodyAreas: ["hips", "quads"],
     intensity: "moderate",
-    durationSeconds: 60,
-    instructions: [
-      "Step your right foot forward into a lunge position",
-      "Lower your left knee to the floor",
-      "Shift your weight forward until you feel a stretch in the front of your left hip",
-      "Hold 30 seconds, then switch sides",
-    ],
-    benefits: ["Releases hip flexors", "Improves hip mobility", "Reduces lower back pain"],
+    bilateral: true,
+    defaultDurationSec: 60,
+    mediaUrl: null,
+    thumbnailUrl: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "stretch-5",
+    id: ID.forwardFold,
+    slug: "seated-forward-fold",
     name: "Seated Forward Fold",
-    description: "Lengthen the hamstrings and lower back with a seated fold.",
-    bodyArea: "hamstrings",
+    instructions:
+      "Sit with legs extended straight. Inhale and lengthen the spine. Exhale and hinge forward from the hips, reaching toward your feet. Hold, breathing deeply.",
+    cues: ["Lead with the chest, not the head", "Micro-bend the knees if needed"],
+    cautions: ["Skip if you have a disc injury"],
+    bodyAreas: ["hamstrings", "lower_back"],
     intensity: "gentle",
-    durationSeconds: 45,
-    instructions: [
-      "Sit on the floor with legs extended straight",
-      "Inhale and lengthen your spine",
-      "Exhale and hinge forward from your hips",
-      "Reach toward your feet, hold for 30 seconds",
-    ],
-    benefits: ["Lengthens hamstrings", "Relieves lower back", "Calms the nervous system"],
+    bilateral: false,
+    defaultDurationSec: 45,
+    mediaUrl: null,
+    thumbnailUrl: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "stretch-6",
+    id: ID.childPose,
+    slug: "childs-pose",
     name: "Child's Pose",
-    description: "A restorative pose for full back and shoulder relief.",
-    bodyArea: "lower_back",
+    instructions:
+      "Kneel and sit back on your heels. Fold forward, extending arms in front. Rest forehead on the mat. Breathe deeply.",
+    cues: ["Relax the jaw and shoulders", "Let the belly rest on the thighs"],
+    cautions: ["Place a block under forehead if it doesn't reach"],
+    bodyAreas: ["lower_back", "hips"],
     intensity: "gentle",
-    durationSeconds: 60,
-    instructions: [
-      "Kneel on the floor and sit back on your heels",
-      "Fold forward, extending arms out in front",
-      "Rest your forehead on the mat",
-      "Breathe deeply and hold for 45–60 seconds",
-    ],
-    benefits: ["Relieves lower back", "Calms the mind", "Gently stretches hips"],
+    bilateral: false,
+    defaultDurationSec: 60,
+    mediaUrl: null,
+    thumbnailUrl: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "stretch-7",
+    id: ID.quadStretch,
+    slug: "standing-quad-stretch",
     name: "Standing Quad Stretch",
-    description: "Balance and stretch the front of the thigh.",
-    bodyArea: "quads",
+    instructions:
+      "Stand on left foot. Bend right knee and grab the right ankle behind you. Pull heel toward glutes. Hold 15 seconds, then switch.",
+    cues: ["Keep knees close together", "Engage core for balance"],
+    cautions: ["Hold a wall if balance is wobbly"],
+    bodyAreas: ["quads"],
     intensity: "moderate",
-    durationSeconds: 30,
-    instructions: [
-      "Stand on your left foot, bend your right knee",
-      "Grab your right ankle with your right hand",
-      "Pull heel toward your glutes until you feel a stretch",
-      "Hold 15 seconds, then switch",
-    ],
-    benefits: ["Stretches quadriceps", "Improves balance", "Reduces knee tension"],
+    bilateral: true,
+    defaultDurationSec: 30,
+    mediaUrl: null,
+    thumbnailUrl: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "stretch-8",
+    id: ID.shoulderCross,
+    slug: "shoulder-cross-stretch",
     name: "Shoulder Cross Stretch",
-    description: "Release tension in the posterior shoulder.",
-    bodyArea: "shoulders",
+    instructions:
+      "Bring right arm across the chest. Use left hand to press it gently toward the body. Hold 15 seconds, then switch.",
+    cues: ["Keep shoulders down", "Don't rotate the spine"],
+    cautions: [],
+    bodyAreas: ["shoulders"],
     intensity: "gentle",
-    durationSeconds: 30,
-    instructions: [
-      "Bring your right arm across your chest",
-      "Use your left hand to press it gently toward your body",
-      "Hold 15 seconds, feeling the stretch in the back of the shoulder",
-      "Switch arms",
-    ],
-    benefits: ["Releases shoulder tension", "Improves shoulder mobility"],
+    bilateral: true,
+    defaultDurationSec: 30,
+    mediaUrl: null,
+    thumbnailUrl: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
 ]
 
-export const MOCK_ROUTINES: Routine[] = [
+const byId = (id: string) => MOCK_STRETCHES.find((s) => s.id === id)!
+
+// ─── Routines ─────────────────────────────────────────────────────────────────
+
+export const MOCK_ROUTINES: RoutineType[] = [
   {
-    id: "routine-1",
-    name: "Morning Wake-Up Flow",
+    id: ID.morningFlow,
+    slug: "morning-wake-up-flow",
+    title: "Morning Wake-Up Flow",
     description: "Gently wake your body with this energizing morning routine.",
-    goal: "morning_wakeup",
+    goal: "mobility",
     level: "gentle",
-    durationMinutes: 10,
-    stretchCount: 5,
-    isSystem: true,
-    createdAt: "2024-01-01T00:00:00.000Z",
-    updatedAt: "2024-01-01T00:00:00.000Z",
-    tags: ["morning", "energy", "full-body"],
+    totalDurationSec: 240,
+    isPremium: false,
+    isAiGenerated: false,
+    ownerId: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "routine-2",
-    name: "Desk Worker Relief",
+    id: ID.deskReset,
+    slug: "desk-worker-relief",
+    title: "Desk Worker Relief",
     description: "Combat the effects of sitting all day with this targeted routine.",
-    goal: "desk_reset",
+    goal: "posture",
     level: "moderate",
-    durationMinutes: 8,
-    stretchCount: 4,
-    isSystem: true,
-    createdAt: "2024-01-01T00:00:00.000Z",
-    updatedAt: "2024-01-01T00:00:00.000Z",
-    tags: ["desk", "posture", "neck", "shoulders"],
+    totalDurationSec: 165,
+    isPremium: false,
+    isAiGenerated: false,
+    ownerId: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "routine-3",
-    name: "Lower Back Relief",
+    id: ID.lowerBackRelief,
+    slug: "lower-back-relief",
+    title: "Lower Back Relief",
     description: "Targeted stretches to ease lower back tension and discomfort.",
-    goal: "lower_back_relief",
+    goal: "pain_relief",
     level: "gentle",
-    durationMinutes: 12,
-    stretchCount: 5,
-    isSystem: true,
-    createdAt: "2024-01-01T00:00:00.000Z",
-    updatedAt: "2024-01-01T00:00:00.000Z",
-    tags: ["back", "relief", "gentle"],
+    totalDurationSec: 285,
+    isPremium: false,
+    isAiGenerated: false,
+    ownerId: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "routine-4",
-    name: "Post-Workout Recovery",
+    id: ID.postWorkout,
+    slug: "post-workout-recovery",
+    title: "Post-Workout Recovery",
     description: "Cool down and recover after exercise with deep muscle stretches.",
-    goal: "workout_recovery",
+    goal: "recovery",
     level: "deep",
-    durationMinutes: 15,
-    stretchCount: 6,
-    isSystem: true,
-    createdAt: "2024-01-01T00:00:00.000Z",
-    updatedAt: "2024-01-01T00:00:00.000Z",
-    tags: ["recovery", "deep", "full-body"],
+    totalDurationSec: 300,
+    isPremium: false,
+    isAiGenerated: false,
+    ownerId: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "routine-5",
-    name: "Bedtime Wind Down",
+    id: ID.bedtime,
+    slug: "bedtime-wind-down",
+    title: "Bedtime Wind Down",
     description: "Prepare your body and mind for restful sleep.",
-    goal: "sleep",
+    goal: "stress_relief",
     level: "gentle",
-    durationMinutes: 10,
-    stretchCount: 4,
-    isSystem: true,
-    createdAt: "2024-01-01T00:00:00.000Z",
-    updatedAt: "2024-01-01T00:00:00.000Z",
-    tags: ["sleep", "relaxation", "evening"],
+    totalDurationSec: 195,
+    isPremium: false,
+    isAiGenerated: false,
+    ownerId: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
   {
-    id: "routine-demo",
-    name: "Quick Full-Body Stretch",
+    id: ID.demo,
+    slug: "quick-full-body-stretch",
+    title: "Quick Full-Body Stretch",
     description: "A fast, balanced routine for any time of day.",
     goal: "flexibility",
     level: "moderate",
-    durationMinutes: 7,
-    stretchCount: 4,
-    isSystem: true,
-    createdAt: "2024-01-01T00:00:00.000Z",
-    updatedAt: "2024-01-01T00:00:00.000Z",
-    tags: ["quick", "full-body", "anytime"],
+    totalDurationSec: 195,
+    isPremium: false,
+    isAiGenerated: false,
+    ownerId: null,
+    createdAt: NOW,
+    updatedAt: NOW,
   },
 ]
 
+// Helper to build a routine_stretches row
+function rs(
+  routineId: string,
+  stretchId: string,
+  order: number,
+  durationSec?: number,
+) {
+  const s = byId(stretchId)
+  return {
+    id: `${routineId.slice(0, 8)}-rs-${order}`.padEnd(36, "0"),
+    routineId,
+    stretchId,
+    orderIndex: order,
+    durationSec: durationSec ?? s.defaultDurationSec,
+    sideFirst: null,
+    stretch: {
+      id: s.id,
+      slug: s.slug,
+      name: s.name,
+      instructions: s.instructions,
+      cues: s.cues,
+      cautions: s.cautions,
+      bodyAreas: s.bodyAreas,
+      intensity: s.intensity,
+      bilateral: s.bilateral,
+      defaultDurationSec: s.defaultDurationSec,
+      mediaUrl: s.mediaUrl,
+      thumbnailUrl: s.thumbnailUrl,
+    },
+  }
+}
+
 export const MOCK_ROUTINE_STRETCHES: Record<string, RoutineWithStretches> = {
-  "routine-1": {
+  [ID.morningFlow]: {
     ...MOCK_ROUTINES[0],
-    stretches: [
-      { order: 0, stretch: MOCK_STRETCHES[0], durationSeconds: 30 },
-      { order: 1, stretch: MOCK_STRETCHES[2], durationSeconds: 60 },
-      { order: 2, stretch: MOCK_STRETCHES[3], durationSeconds: 60 },
-      { order: 3, stretch: MOCK_STRETCHES[5], durationSeconds: 60 },
-      { order: 4, stretch: MOCK_STRETCHES[6], durationSeconds: 30 },
+    routineStretches: [
+      rs(ID.morningFlow, ID.neckTilt, 0),
+      rs(ID.morningFlow, ID.catCow, 1),
+      rs(ID.morningFlow, ID.hipFlexor, 2),
+      rs(ID.morningFlow, ID.childPose, 3),
+      rs(ID.morningFlow, ID.quadStretch, 4),
     ],
   },
-  "routine-2": {
+  [ID.deskReset]: {
     ...MOCK_ROUTINES[1],
-    stretches: [
-      { order: 0, stretch: MOCK_STRETCHES[0], durationSeconds: 30 },
-      { order: 1, stretch: MOCK_STRETCHES[1], durationSeconds: 45 },
-      { order: 2, stretch: MOCK_STRETCHES[7], durationSeconds: 30 },
-      { order: 3, stretch: MOCK_STRETCHES[2], durationSeconds: 60 },
+    routineStretches: [
+      rs(ID.deskReset, ID.neckTilt, 0),
+      rs(ID.deskReset, ID.chestOpener, 1),
+      rs(ID.deskReset, ID.shoulderCross, 2),
+      rs(ID.deskReset, ID.catCow, 3),
     ],
   },
-  "routine-3": {
+  [ID.lowerBackRelief]: {
     ...MOCK_ROUTINES[2],
-    stretches: [
-      { order: 0, stretch: MOCK_STRETCHES[5], durationSeconds: 60 },
-      { order: 1, stretch: MOCK_STRETCHES[2], durationSeconds: 60 },
-      { order: 2, stretch: MOCK_STRETCHES[3], durationSeconds: 60 },
-      { order: 3, stretch: MOCK_STRETCHES[4], durationSeconds: 45 },
-      { order: 4, stretch: MOCK_STRETCHES[5], durationSeconds: 60 },
+    routineStretches: [
+      rs(ID.lowerBackRelief, ID.childPose, 0),
+      rs(ID.lowerBackRelief, ID.catCow, 1),
+      rs(ID.lowerBackRelief, ID.hipFlexor, 2),
+      rs(ID.lowerBackRelief, ID.forwardFold, 3),
+      rs(ID.lowerBackRelief, ID.childPose, 4),
     ],
   },
-  "routine-4": {
+  [ID.postWorkout]: {
     ...MOCK_ROUTINES[3],
-    stretches: [
-      { order: 0, stretch: MOCK_STRETCHES[4], durationSeconds: 45 },
-      { order: 1, stretch: MOCK_STRETCHES[3], durationSeconds: 60 },
-      { order: 2, stretch: MOCK_STRETCHES[6], durationSeconds: 30 },
-      { order: 3, stretch: MOCK_STRETCHES[1], durationSeconds: 45 },
-      { order: 4, stretch: MOCK_STRETCHES[2], durationSeconds: 60 },
-      { order: 5, stretch: MOCK_STRETCHES[5], durationSeconds: 60 },
+    routineStretches: [
+      rs(ID.postWorkout, ID.forwardFold, 0),
+      rs(ID.postWorkout, ID.hipFlexor, 1),
+      rs(ID.postWorkout, ID.quadStretch, 2),
+      rs(ID.postWorkout, ID.chestOpener, 3),
+      rs(ID.postWorkout, ID.catCow, 4),
+      rs(ID.postWorkout, ID.childPose, 5),
     ],
   },
-  "routine-5": {
+  [ID.bedtime]: {
     ...MOCK_ROUTINES[4],
-    stretches: [
-      { order: 0, stretch: MOCK_STRETCHES[5], durationSeconds: 60 },
-      { order: 1, stretch: MOCK_STRETCHES[2], durationSeconds: 60 },
-      { order: 2, stretch: MOCK_STRETCHES[4], durationSeconds: 45 },
-      { order: 3, stretch: MOCK_STRETCHES[0], durationSeconds: 30 },
+    routineStretches: [
+      rs(ID.bedtime, ID.childPose, 0),
+      rs(ID.bedtime, ID.catCow, 1),
+      rs(ID.bedtime, ID.forwardFold, 2),
+      rs(ID.bedtime, ID.neckTilt, 3),
     ],
   },
-  "routine-demo": {
+  [ID.demo]: {
     ...MOCK_ROUTINES[5],
-    stretches: [
-      { order: 0, stretch: MOCK_STRETCHES[0], durationSeconds: 30 },
-      { order: 1, stretch: MOCK_STRETCHES[2], durationSeconds: 60 },
-      { order: 2, stretch: MOCK_STRETCHES[3], durationSeconds: 60 },
-      { order: 3, stretch: MOCK_STRETCHES[4], durationSeconds: 45 },
+    routineStretches: [
+      rs(ID.demo, ID.neckTilt, 0),
+      rs(ID.demo, ID.catCow, 1),
+      rs(ID.demo, ID.hipFlexor, 2),
+      rs(ID.demo, ID.forwardFold, 3),
     ],
   },
 }
 
-const sessionStore: Session[] = []
-let sessionIdCounter = 1
+// Short-friendly slug lookup for player routes (/player/demo, /player/morning-wake-up-flow, …).
+export function findRoutineByIdOrSlug(idOrSlug: string): RoutineWithStretches | null {
+  if (MOCK_ROUTINE_STRETCHES[idOrSlug]) return MOCK_ROUTINE_STRETCHES[idOrSlug]
+  // Convenience: /player/demo -> routine with slug "quick-full-body-stretch"
+  if (idOrSlug === "demo") return MOCK_ROUTINE_STRETCHES[ID.demo]
+  const hit = MOCK_ROUTINES.find((r) => r.slug === idOrSlug)
+  return hit ? MOCK_ROUTINE_STRETCHES[hit.id] : null
+}
 
-export function createMockSession(routineId: string): Session {
-  const session: Session = {
-    id: `session-${sessionIdCounter++}`,
-    routineId,
-    status: "active",
-    currentStretchIndex: 0,
-    startedAt: new Date().toISOString(),
-    stretchesCompleted: 0,
+// ─── Sessions (in-memory) ─────────────────────────────────────────────────────
+
+const DEMO_USER_ID = "00000000-0000-4000-8000-000000000001"
+let sessionCounter = 1
+const sessionStore: SessionType[] = []
+
+function uuid(suffix: number): string {
+  return `33333333-3333-4000-8000-${String(suffix).padStart(12, "0")}`
+}
+
+export function createMockSession(input: StartSession): SessionType {
+  const session: SessionType = {
+    id: uuid(sessionCounter++),
+    userId: input.userId || DEMO_USER_ID,
+    routineId: input.routineId,
+    startedAt: new Date(),
+    completedAt: null,
+    durationDoneSec: 0,
+    completionPct: 0,
+    skippedStretchIds: [],
+    painFeedback: {},
+    createdAt: new Date(),
   }
   sessionStore.push(session)
   return session
 }
 
-export function updateMockSession(id: string, update: Partial<Session>): Session | null {
+export function updateMockSession(
+  id: string,
+  patch: Partial<Pick<SessionType, "durationDoneSec" | "completionPct" | "skippedStretchIds" | "painFeedback" | "completedAt">>,
+): SessionType | null {
   const idx = sessionStore.findIndex((s) => s.id === id)
   if (idx === -1) return null
-  sessionStore[idx] = { ...sessionStore[idx], ...update }
-  if (update.status === "completed") {
-    sessionStore[idx].completedAt = new Date().toISOString()
-  }
+  sessionStore[idx] = { ...sessionStore[idx], ...patch }
   return sessionStore[idx]
 }
 
-export const MOCK_PROGRESS: Progress = {
+// ─── Progress ────────────────────────────────────────────────────────────────
+
+export interface MockProgress {
+  currentStreak: number
+  longestStreak: number
+  totalSessions: number
+  totalMinutes: number
+  thisWeekMinutes: number
+  thisMonthMinutes: number
+  avgCompletionPct: number
+  activeDays: string[]
+  history: Array<{
+    date: string
+    minutesStretched: number
+    sessionsCompleted: number
+    completionPct: number
+  }>
+}
+
+export const MOCK_PROGRESS: MockProgress = {
   currentStreak: 5,
   longestStreak: 12,
-  totalMinutes: 347,
   totalSessions: 42,
+  totalMinutes: 347,
   thisWeekMinutes: 48,
   thisMonthMinutes: 156,
+  avgCompletionPct: 87,
   activeDays: ["monday", "wednesday", "friday", "saturday"],
   history: Array.from({ length: 30 }, (_, i) => {
     const date = new Date()
@@ -307,7 +443,19 @@ export const MOCK_PROGRESS: Progress = {
       date: date.toISOString().split("T")[0],
       minutesStretched: hasActivity ? Math.floor(Math.random() * 20) + 5 : 0,
       sessionsCompleted: hasActivity ? Math.floor(Math.random() * 2) + 1 : 0,
-      routineIds: hasActivity ? ["routine-1"] : [],
+      completionPct: hasActivity ? Math.floor(Math.random() * 30) + 70 : 0,
     }
   }),
+}
+
+// ─── Goal display helpers ────────────────────────────────────────────────────
+
+export const GOAL_META: Record<Goal, { label: string; emoji: string }> = {
+  flexibility: { label: "Flexibility", emoji: "🤸" },
+  mobility: { label: "Mobility", emoji: "☀️" },
+  recovery: { label: "Recovery", emoji: "💪" },
+  stress_relief: { label: "Stress Relief", emoji: "🌙" },
+  posture: { label: "Posture", emoji: "💻" },
+  athletic_performance: { label: "Athletic", emoji: "⚡" },
+  pain_relief: { label: "Pain Relief", emoji: "🧘" },
 }
