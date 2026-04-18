@@ -5,6 +5,8 @@ Enterprise standards gate executed before any PR submission.
 
 Trigger: PreToolCall — runs when Claude attempts gh pr create
 This hook BLOCKS the PR if any mandatory gate fails.
+
+Tailored for bendro (Next.js 16 / TypeScript / Drizzle / NextAuth / Stripe).
 """
 
 import os
@@ -42,8 +44,7 @@ def section(msg: str) -> None:
     print(f"\n{BLUE}\u25b6 {msg}{NC}")
 
 
-def run(cmd: str, quiet: bool = True) -> tuple[int, str]:
-    """Run a shell command and return (returncode, output)."""
+def run(cmd: str) -> tuple[int, str]:
     result = subprocess.run(
         cmd, shell=True, capture_output=True, text=True, cwd=str(REPO_ROOT),
     )
@@ -55,148 +56,160 @@ def has_cmd(name: str) -> bool:
 
 
 def gate_lint() -> None:
-    section("Gate 1: Lint")
+    section("Gate 1: Lint & Typecheck")
 
-    if has_cmd("ruff"):
-        rc, _ = run("ruff check services/ packages/ --quiet 2>/dev/null")
-        ok("Ruff Python lint") if rc == 0 else fail("Ruff Python lint — run: ruff check services/ packages/")
-
-        rc, _ = run("ruff format --check services/ packages/ --quiet 2>/dev/null")
-        ok("Ruff Python format") if rc == 0 else fail("Ruff Python format — run: ruff format services/ packages/")
-    else:
-        warn("Ruff not installed — skipping Python lint")
-
-    if has_cmd("mypy"):
-        rc, _ = run("mypy services/orchestrator/src services/api/src --strict --quiet 2>/dev/null")
-        ok("mypy type check") if rc == 0 else fail("mypy type check — run: mypy services/")
-    else:
-        warn("mypy not installed — skipping Python type check")
-
-    if Path(REPO_ROOT / "pnpm-lock.yaml").exists() and has_cmd("pnpm"):
+    if (REPO_ROOT / "pnpm-lock.yaml").exists() and has_cmd("pnpm"):
         rc, _ = run("pnpm lint --silent 2>/dev/null")
-        ok("ESLint TypeScript lint") if rc == 0 else fail("ESLint TypeScript lint — run: pnpm lint")
+        ok("ESLint") if rc == 0 else fail("ESLint — run: pnpm lint")
+
+        rc, _ = run("pnpm typecheck --silent 2>/dev/null")
+        ok("TypeScript (tsc --noEmit)") if rc == 0 else fail("TypeScript — run: pnpm typecheck")
     else:
-        warn("pnpm not available — skipping TypeScript lint")
+        warn("pnpm not available — skipping lint & typecheck")
 
 
 def gate_security() -> None:
     section("Gate 2: Security Scan")
 
-    if has_cmd("bandit"):
-        rc, out = run("bandit -r services/orchestrator/src services/api/src -ll --format text 2>/dev/null")
-        high_count = out.count("Severity: High") + out.count("Severity: Critical")
-        if high_count == 0:
-            ok("Bandit SAST — 0 HIGH/CRITICAL findings")
-        else:
-            fail(f"Bandit SAST — {high_count} HIGH/CRITICAL findings. Run: bandit -r services/ -ll")
-    else:
-        warn("Bandit not installed — skipping Python SAST")
-
     if has_cmd("detect-secrets") and (REPO_ROOT / ".secrets.baseline").exists():
-        rc, _ = run("detect-secrets scan --baseline .secrets.baseline --only-allowlisted 2>/dev/null")
-        ok("detect-secrets — no new secrets detected") if rc == 0 else fail("detect-secrets — new secrets detected!")
+        rc, _ = run("detect-secrets scan --baseline .secrets.baseline 2>/dev/null")
+        ok("detect-secrets — no new secrets") if rc == 0 else fail("detect-secrets — new secrets detected")
     else:
-        warn("detect-secrets not configured — skipping secret detection")
+        warn("detect-secrets not configured — skipping")
 
-    # Check for hardcoded secrets patterns
+    if has_cmd("pnpm"):
+        rc, out = run("pnpm audit --prod --audit-level=high --json 2>/dev/null")
+        # pnpm audit exits non-zero on findings; parse output lightly
+        if rc == 0:
+            ok("pnpm audit — 0 high/critical")
+        else:
+            high = out.count('"severity":"high"') + out.count('"severity":"critical"')
+            if high:
+                fail(f"pnpm audit — {high} high/critical findings")
+            else:
+                ok("pnpm audit — 0 high/critical (non-zero exit ignored)")
+
     rc, out = run(
-        'grep -rn "sk-ant-\\|sk-proj-\\|AKIA[0-9A-Z]\\|password.*=.*[\x27\\"][^\x27\\"]{8}" '
-        "services/ packages/ apps/ --include='*.py' --include='*.ts' 2>/dev/null "
-        "| grep -v '.example\\|test_\\|spec.\\|#' | head -5"
+        'grep -rnE "sk-ant-|sk-proj-|AKIA[0-9A-Z]{16}|whsec_live_" '
+        "src/ --include='*.ts' --include='*.tsx' 2>/dev/null "
+        "| grep -v 'example\\|\\.test\\.\\|\\.spec\\.' | head -5"
     )
     if rc == 0 and out.strip():
-        fail("Potential hardcoded credentials detected — review output above")
+        fail("Potential hardcoded credentials detected — review src/")
     else:
-        ok("No hardcoded credential patterns detected")
+        ok("No hardcoded credential patterns in src/")
 
 
 def gate_architecture() -> None:
     section("Gate 3: Architecture Invariants")
 
-    # LangGraph only in orchestrator
+    # Drizzle ORM only in src/services/ and src/db/
     rc, out = run(
-        'grep -rn "from langgraph\\|import langgraph\\|StateGraph\\|CompiledGraph" '
-        "services/api/ apps/ packages/ --include='*.py' 2>/dev/null | grep -v test_ | wc -l"
+        'grep -rnE "from \\"drizzle-orm|from \\"@neondatabase" '
+        "src/ --include='*.ts' --include='*.tsx' 2>/dev/null "
+        "| grep -vE 'src/services/|src/db/|src/lib/data\\.ts|\\.test\\.|\\.spec\\.' | wc -l"
     )
     count = int(out.strip() or "0")
     if count == 0:
-        ok("LangGraph only in services/orchestrator")
+        ok("Drizzle imported only in src/services/ and src/db/")
     else:
-        fail(f"LangGraph imported outside services/orchestrator ({count} violations)")
+        fail(f"Drizzle imported outside services/db ({count} violations)")
 
-    # No direct LLM SDK calls outside adapters
+    # MediaPipe only in src/lib/pose and camera components
     rc, out = run(
-        'grep -rn "from anthropic import\\|import anthropic" '
-        "services/orchestrator/src/nodes/ services/orchestrator/src/graphs/ "
-        "services/orchestrator/src/validators/ services/api/ apps/ packages/ "
-        "--include='*.py' 2>/dev/null | grep -v 'anthropic_adapter\\|test_' | wc -l"
+        'grep -rnE "from \\"@mediapipe" '
+        "src/ --include='*.ts' --include='*.tsx' 2>/dev/null "
+        "| grep -vE 'src/lib/pose/|src/app/player/|src/components/.*camera' | wc -l"
     )
     count = int(out.strip() or "0")
     if count == 0:
-        ok("No direct Anthropic SDK calls outside anthropic_adapter.py")
+        ok("MediaPipe imported only in pose/camera modules")
     else:
-        fail(f"Direct Anthropic SDK calls found outside adapter ({count} violations)")
+        fail(f"MediaPipe imported outside pose/camera modules ({count} violations)")
 
-    # No raw DB calls in routes
+    # Stripe only in src/services/billing.ts and src/app/api/webhooks/stripe
     rc, out = run(
-        'grep -rn "db\\.execute\\|AsyncSession\\|\\.query(" '
-        "services/api/src/routes/ services/api/src/services/ "
-        "--include='*.py' 2>/dev/null | grep -v 'Depends\\|test_\\|# OK:' | wc -l"
+        'grep -rnE "from \\"stripe" '
+        "src/ --include='*.ts' --include='*.tsx' 2>/dev/null "
+        "| grep -vE 'src/services/billing\\.ts|src/app/api/webhooks/stripe|\\.test\\.|\\.spec\\.' | wc -l"
     )
     count = int(out.strip() or "0")
     if count == 0:
-        ok("Repository pattern — no raw DB calls in routes/services")
+        ok("Stripe SDK contained in billing.ts / webhook route")
     else:
-        fail(f"Raw DB calls found in routes/services ({count} violations)")
+        fail(f"Stripe imported outside billing.ts ({count} violations)")
+
+    # Drizzle must not appear directly in routes
+    rc, out = run(
+        'grep -rnE "drizzle-orm|@neondatabase" '
+        "src/app/api/ --include='*.ts' 2>/dev/null | wc -l"
+    )
+    count = int(out.strip() or "0")
+    if count == 0:
+        ok("Route handlers do not touch Drizzle directly")
+    else:
+        fail(f"Route handler imports Drizzle directly ({count} violations)")
 
 
 def gate_security_invariants() -> None:
     section("Gate 4: Security Invariants")
 
-    repo_dir = REPO_ROOT / "services" / "api" / "src" / "repositories"
-    if repo_dir.exists():
-        repo_files = [
-            f for f in repo_dir.glob("*.py")
-            if "__pycache__" not in str(f) and "test_" not in f.name and f.name != "__init__.py"
-        ]
-        missing = [f.name for f in repo_files if "workspace_id" not in f.read_text()]
-        if not missing:
-            ok("workspace_id filter present in all repository files")
-        else:
-            fail(f"Repository files missing workspace_id: {', '.join(missing)}")
-    else:
-        warn("No repository files found — workspace_id check skipped")
-
-    # No PII in logs
+    # userId from NextAuth session only, never from body
     rc, out = run(
-        'grep -rn "logger.*\\bemail\\b\\|logger.*\\bpassword\\b\\|structlog.*\\bpassword\\b" '
-        "services/ --include='*.py' 2>/dev/null | grep -v 'test_\\|signin_unknown\\|# OK:' | wc -l"
+        'grep -rnE "body\\.userId|req\\.body\\.userId|data\\.userId" '
+        "src/app/api/ --include='*.ts' 2>/dev/null "
+        "| grep -v '\\.test\\.\\|\\.spec\\.' | wc -l"
     )
     count = int(out.strip() or "0")
     if count == 0:
-        ok("No PII in log statements")
+        ok("userId never read from request body")
     else:
-        fail(f"PII detected in log statements ({count} occurrences)")
+        fail(f"userId read from request body ({count} occurrences) — must come from NextAuth session")
+
+    # No PII in console.log
+    rc, out = run(
+        'grep -rnE "console\\.log\\([^)]*\\b(email|password|token)\\b" '
+        "src/ --include='*.ts' --include='*.tsx' 2>/dev/null "
+        "| grep -v '\\.test\\.\\|\\.spec\\.' | wc -l"
+    )
+    count = int(out.strip() or "0")
+    if count == 0:
+        ok("No PII/secret names in console.log")
+    else:
+        fail(f"PII detected in console.log ({count} occurrences)")
 
 
 def gate_contracts() -> None:
     section("Gate 5: Contract-First (OpenAPI)")
 
-    specs_dir = REPO_ROOT / "docs" / "specs" / "openapi" / "v1"
-    if specs_dir.exists():
-        specs = list(specs_dir.glob("*.yaml"))
-        routes_dir = REPO_ROOT / "services" / "api" / "src" / "routes"
-        routes = [
-            f for f in routes_dir.glob("*.py")
-            if "__init__" not in f.name and "test_" not in f.name
-        ] if routes_dir.exists() else []
+    spec = REPO_ROOT / "docs" / "specs" / "openapi" / "v1" / "bendro.yaml"
+    if not spec.exists():
+        fail("docs/specs/openapi/v1/bendro.yaml missing — write contract before routes")
+        return
 
-        if specs:
-            ok(f"OpenAPI specs directory has {len(specs)} spec(s) for {len(routes)} route file(s)")
-        else:
-            warn("No OpenAPI specs in docs/specs/openapi/v1/")
+    spec_text = spec.read_text(encoding="utf-8")
+    routes_dir = REPO_ROOT / "src" / "app" / "api"
+    if not routes_dir.exists():
+        ok("No API routes yet")
+        return
+
+    resources = set()
+    for route in routes_dir.rglob("route.ts"):
+        rel = route.relative_to(REPO_ROOT)
+        parts = [p for p in rel.parts if not (p.startswith("[") and p.endswith("]"))]
+        try:
+            i = parts.index("api")
+            after = parts[i + 1 : -1]
+            if after:
+                resources.add(after[0])
+        except ValueError:
+            continue
+
+    missing = [r for r in sorted(resources) if f"/{r}" not in spec_text]
+    if not missing:
+        ok(f"OpenAPI spec covers all {len(resources)} resource(s)")
     else:
-        warn("docs/specs/openapi/v1/ not found — skipping contract check")
+        fail(f"OpenAPI spec missing paths: {', '.join(missing)}")
 
 
 def gate_docs() -> None:
@@ -214,25 +227,29 @@ def gate_docs() -> None:
 
 
 def gate_file_size() -> None:
-    section("Gate 7: Code Size Limits")
+    section("Gate 7: Code Size Limits (≤ 300 lines)")
 
     large_files = []
-    for ext in ("*.py", "*.ts", "*.tsx"):
-        for d in ("services", "packages", "apps"):
-            search_dir = REPO_ROOT / d
-            if not search_dir.exists():
+    search_dir = REPO_ROOT / "src"
+    if search_dir.exists():
+        for f in search_dir.rglob("*.ts"):
+            if any(x in str(f) for x in ("node_modules", ".test.", ".spec.")):
                 continue
-            for f in search_dir.rglob(ext):
-                if "node_modules" in str(f) or "__pycache__" in str(f):
-                    continue
-                if ".min." in f.name or "test_" in f.name or ".spec." in f.name:
-                    continue
-                try:
-                    line_count = len(f.read_text().splitlines())
-                    if line_count > 300:
-                        large_files.append((f.relative_to(REPO_ROOT), line_count))
-                except (OSError, UnicodeDecodeError):
-                    pass
+            try:
+                line_count = len(f.read_text().splitlines())
+                if line_count > 300:
+                    large_files.append((f.relative_to(REPO_ROOT), line_count))
+            except (OSError, UnicodeDecodeError):
+                pass
+        for f in search_dir.rglob("*.tsx"):
+            if any(x in str(f) for x in ("node_modules", ".test.", ".spec.")):
+                continue
+            try:
+                line_count = len(f.read_text().splitlines())
+                if line_count > 300:
+                    large_files.append((f.relative_to(REPO_ROOT), line_count))
+            except (OSError, UnicodeDecodeError):
+                pass
 
     if not large_files:
         ok("All files under 300 lines")
@@ -246,7 +263,7 @@ def main() -> None:
 
     print()
     print("\u2554" + "\u2550" * 62 + "\u2557")
-    print("\u2551        CREATOR OS \u2014 ENTERPRISE STANDARDS PRE-PR GATE        \u2551")
+    print("\u2551        BENDRO \u2014 ENTERPRISE STANDARDS PRE-PR GATE           \u2551")
     print("\u255a" + "\u2550" * 62 + "\u255d")
     print()
 

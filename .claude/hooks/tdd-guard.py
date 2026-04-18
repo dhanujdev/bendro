@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 """
 TDD Guard Hook — PreToolCall
-Enforces test-driven development (ADR-0014).
-Warns when implementation files are written without corresponding test files.
+Enforces test-driven development for bendro.
+Warns when implementation files under src/services/, src/app/api/**/route.ts,
+src/lib/ (non-UI helpers), or src/db/ are written without a corresponding
+test file.
+
+Test conventions (bendro):
+  - Unit tests for src/services/<x>.ts      → tests/unit/services/<x>.test.ts
+                                          or src/services/<x>.test.ts (colocated)
+  - Unit tests for src/lib/<x>.ts           → tests/unit/lib/<x>.test.ts
+                                          or src/lib/<x>.test.ts
+  - Integration tests for API route.ts       → tests/integration/api/<resource>.test.ts
+  - BDD features (cross-cutting flows)       → tests/features/<domain>/<feature>.feature
 """
 
 import json
@@ -14,7 +24,6 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 
 
 def get_file_path() -> str:
-    """Extract file_path from Claude Code hook JSON stdin."""
     try:
         raw = sys.stdin.read()
         if raw.strip():
@@ -26,73 +35,102 @@ def get_file_path() -> str:
     return ""
 
 
+def is_skippable(file_path: str) -> bool:
+    low = file_path.lower()
+    skip_tokens = (
+        "/tests/", "/test/", ".test.", ".spec.", ".feature",
+        "__pycache__", ".md", ".yaml", ".yml", ".json", ".toml",
+        ".sh", "/migrations/", "/drizzle/", "/seed",
+        "/public/", "node_modules/",
+        # component / page files — UI TDD tracked via Playwright, not this hook
+        "src/app/(", "src/components/",
+    )
+    return any(t in low for t in skip_tokens)
+
+
+def infer_resource_for_route(p: Path) -> str:
+    rel = p.relative_to(REPO_ROOT) if str(p).startswith(str(REPO_ROOT)) else p
+    parts = [x for x in rel.parts if not (x.startswith("[") and x.endswith("]"))]
+    try:
+        api_idx = parts.index("api")
+    except ValueError:
+        return ""
+    after = parts[api_idx + 1 : -1]
+    return after[0] if after else ""
+
+
+def candidate_test_files(p: Path) -> list[Path]:
+    """Return plausible test file locations for the given bendro source file."""
+    rel = p.relative_to(REPO_ROOT) if str(p).startswith(str(REPO_ROOT)) else p
+    stem = p.stem
+
+    # API route: src/app/api/<resource>/route.ts or .../[id]/route.ts
+    if re.search(r"src/app/api/.*/route\.ts$", str(rel)):
+        resource = infer_resource_for_route(p)
+        if not resource:
+            return []
+        return [
+            REPO_ROOT / "tests" / "integration" / "api" / f"{resource}.test.ts",
+            REPO_ROOT / "tests" / "api" / f"{resource}.test.ts",
+            p.parent / "route.test.ts",
+        ]
+
+    # services or lib or db — colocated OR mirrored under tests/unit/
+    for root in ("src/services", "src/lib", "src/db"):
+        if str(rel).startswith(root + "/"):
+            sub = str(rel)[len(root) + 1 :]
+            sub_dir = Path(sub).parent
+            mirrored_dir = REPO_ROOT / "tests" / "unit" / root.split("/", 1)[1] / sub_dir
+            return [
+                p.parent / f"{stem}.test.ts",
+                p.parent / f"{stem}.spec.ts",
+                p.parent / "__tests__" / f"{stem}.test.ts",
+                mirrored_dir / f"{stem}.test.ts",
+            ]
+
+    return []
+
+
 def main() -> None:
     file_path = get_file_path()
-    if not file_path:
-        sys.exit(0)
-
-    # Skip non-source files
-    skip_patterns = (
-        "test", "spec", "feature", "__pycache__",
-        ".md", ".yaml", ".json", ".toml", ".sh", "migration",
-    )
-    if any(pat in file_path.lower() for pat in skip_patterns):
+    if not file_path or is_skippable(file_path):
         sys.exit(0)
 
     p = Path(file_path)
+    if p.suffix not in (".ts", ".tsx"):
+        sys.exit(0)
 
-    # Python source files in services
-    if re.search(r"services/.*/src/.*\.py$", file_path):
-        filename = p.stem
-        # Derive test directory
-        rel = str(p.relative_to(REPO_ROOT)) if file_path.startswith(str(REPO_ROOT)) else file_path
-        parts = rel.split("/src/")
-        if len(parts) >= 2:
-            test_dir = REPO_ROOT / parts[0] / "tests"
-        else:
-            test_dir = p.parent.parent / "tests"
+    # Only check files under src/
+    try:
+        rel = p.relative_to(REPO_ROOT)
+    except ValueError:
+        sys.exit(0)
+    if not str(rel).startswith("src/"):
+        sys.exit(0)
 
-        test_file = test_dir / f"test_{filename}.py"
-        test_file_alt = test_dir / "unit" / f"test_{filename}.py"
+    candidates = candidate_test_files(p)
+    if not candidates:
+        sys.exit(0)
 
-        if not test_file.exists() and not test_file_alt.exists():
-            print(f"""
-\u26a0\ufe0f  TDD REMINDER (ADR-0014)
+    if any(c.exists() for c in candidates):
+        sys.exit(0)
+
+    primary = candidates[0]
+    primary_rel = primary.relative_to(REPO_ROOT)
+    print(f"""
+\u26a0\ufe0f  TDD REMINDER
    Writing implementation: {rel}
-   Expected test file: {test_dir.relative_to(REPO_ROOT)}/test_{filename}.py
+   No test file found. First candidate: {primary_rel}
 
-   Per ADR-0014, failing tests must be committed BEFORE implementation.
-   The test file does not exist yet.
+   Per bendro TDD policy, failing tests must be committed BEFORE implementation.
 
    To proceed correctly:
-   1. Write the test file first
-   2. Run tests to confirm they FAIL (RED phase)
-   3. Commit failing tests
-   4. Then write this implementation (GREEN phase)
+   1. Write the test file first (pick one of: colocated .test.ts, or tests/unit/...)
+   2. Run: pnpm test — confirm it FAILS (RED)
+   3. Commit failing test(s)
+   4. Then write this implementation (GREEN)
 
-   (Proceeding with write — this is a warning. PR reviewer will check git log order.)
-""")
-
-    # TypeScript source files
-    if re.search(r"(services|packages|apps)/.*/src/.*\.(ts|tsx)$", file_path):
-        if not re.search(r"\.(test|spec)\.(ts|tsx)$", file_path):
-            filename = p.stem
-            dirname = p.parent
-
-            candidates = [
-                dirname / "__tests__" / f"{filename}.test.ts",
-                dirname / f"{filename}.test.ts",
-                dirname / f"{filename}.spec.ts",
-            ]
-
-            if not any(c.exists() for c in candidates):
-                print(f"""
-\u26a0\ufe0f  TDD REMINDER (ADR-0014)
-   Writing implementation: {p.name}
-   No test file found (checked: .test.ts, .spec.ts, __tests__/)
-
-   Write failing tests BEFORE this implementation.
-   (Proceeding — PR reviewer will check git log order.)
+   (Proceeding with write — this is a warning. pr-reviewer checks git log order.)
 """)
 
     sys.exit(0)

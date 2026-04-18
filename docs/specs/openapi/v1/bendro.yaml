@@ -1,0 +1,428 @@
+openapi: 3.1.0
+info:
+  title: Bendro API
+  version: 0.1.0
+  description: |
+    REST API for Bendro — AI-assisted flexibility copilot.
+    All routes are Next.js Route Handlers under `src/app/api/*/route.ts`.
+
+    **Auth status (Phase 0):** no authentication enforced yet. `userId` is
+    currently accepted from request body / query where noted. This is a
+    known security gap to be closed in Phase 3 (NextAuth). Once Phase 3
+    lands, `userId` MUST come from the authenticated session and those
+    fields will be removed from request schemas.
+
+    **Contract-first:** every route under `src/app/api/` must be represented
+    in this file before implementation. Enforced by
+    `.claude/hooks/contract-guard.py`.
+  contact:
+    name: Bendro
+    url: https://github.com/dhanujdev/bendro
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local dev (Next.js)
+  - url: https://{project}.vercel.app/api
+    description: Vercel preview
+    variables:
+      project:
+        default: bendro
+  - url: https://bendro.app/api
+    description: Production
+
+tags:
+  - name: catalog
+    description: Public read-only catalog (stretches, routines)
+  - name: sessions
+    description: Workout sessions (authenticated in Phase 3+)
+  - name: progress
+    description: User progress & streaks
+
+paths:
+  /stretches:
+    get:
+      tags: [catalog]
+      summary: List stretches
+      operationId: listStretches
+      parameters:
+        - { name: bodyArea,  in: query, schema: { $ref: "#/components/schemas/BodyArea" } }
+        - { name: intensity, in: query, schema: { $ref: "#/components/schemas/Intensity" } }
+        - { name: limit,     in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: offset,    in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: Paginated stretch list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, limit, offset]
+                properties:
+                  data:   { type: array, items: { $ref: "#/components/schemas/Stretch" } }
+                  total:  { type: integer, minimum: 0 }
+                  limit:  { type: integer }
+                  offset: { type: integer }
+        "400": { $ref: "#/components/responses/ValidationError" }
+
+  /routines:
+    get:
+      tags: [catalog]
+      summary: List routines
+      operationId: listRoutines
+      parameters:
+        - { name: goal,            in: query, schema: { $ref: "#/components/schemas/Goal" } }
+        - { name: level,           in: query, schema: { $ref: "#/components/schemas/Intensity" } }
+        - { name: isPremium,       in: query, schema: { type: boolean } }
+        - { name: maxDurationSec,  in: query, schema: { type: integer, minimum: 1 } }
+        - { name: limit,           in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: offset,          in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: Paginated routine list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, total, limit, offset]
+                properties:
+                  data:   { type: array, items: { $ref: "#/components/schemas/Routine" } }
+                  total:  { type: integer }
+                  limit:  { type: integer }
+                  offset: { type: integer }
+        "400": { $ref: "#/components/responses/ValidationError" }
+    post:
+      tags: [catalog]
+      summary: Create a routine
+      description: Creates a user- or AI-generated routine. Will become auth-required in Phase 3.
+      operationId: createRoutine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateRoutine" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Routine" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /routines/{id}:
+    get:
+      tags: [catalog]
+      summary: Get routine by ID or slug
+      operationId: getRoutine
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: UUID or slug
+          schema: { type: string }
+      responses:
+        "200":
+          description: Routine with ordered stretches
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/RoutineWithStretches" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /sessions:
+    post:
+      tags: [sessions]
+      summary: Start a workout session
+      description: |
+        **Phase 3 change:** `userId` will be removed from the body and read
+        from the authenticated session instead.
+      operationId: startSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartSession" }
+      responses:
+        "201":
+          description: Session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Session" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /sessions/{id}:
+    patch:
+      tags: [sessions]
+      summary: Update a session (completion, pain feedback, skipped stretches)
+      operationId: updateSession
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSession" }
+      responses:
+        "200":
+          description: Updated session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Session" }
+        "400": { $ref: "#/components/responses/InvalidJson" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /progress:
+    get:
+      tags: [progress]
+      summary: Get progress summary + history
+      description: |
+        **Phase 3 change:** `userId` query param will be removed; route will
+        read the authenticated user's session.
+      operationId: getProgress
+      parameters:
+        - { name: userId, in: query, schema: { type: string, format: uuid } }
+        - { name: days,   in: query, schema: { type: integer, minimum: 1, maximum: 365, default: 30 } }
+      responses:
+        "200":
+          description: Progress summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Progress" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+
+components:
+  responses:
+    InvalidJson:
+      description: Malformed JSON body
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationError:
+      description: Request failed schema validation
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ValidationFailure" }
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    BodyArea:
+      type: string
+      enum: [neck, shoulders, chest, upper_back, lower_back, hips, glutes,
+             quads, hamstrings, calves, ankles, wrists, full_body]
+    Intensity:
+      type: string
+      enum: [gentle, moderate, deep]
+    Goal:
+      type: string
+      enum: [flexibility, mobility, recovery, stress_relief, posture,
+             athletic_performance, pain_relief]
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    ValidationFailure:
+      type: object
+      required: [error]
+      properties:
+        error:  { type: string }
+        issues:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    Stretch:
+      type: object
+      required:
+        - id
+        - slug
+        - name
+        - instructions
+        - cues
+        - cautions
+        - bodyAreas
+        - intensity
+        - bilateral
+        - defaultDurationSec
+        - createdAt
+        - updatedAt
+      properties:
+        id:                 { type: string, format: uuid }
+        slug:               { type: string }
+        name:               { type: string }
+        instructions:       { type: string }
+        cues:               { type: array, items: { type: string } }
+        cautions:           { type: array, items: { type: string } }
+        bodyAreas:          { type: array, items: { $ref: "#/components/schemas/BodyArea" } }
+        intensity:          { $ref: "#/components/schemas/Intensity" }
+        bilateral:          { type: boolean }
+        defaultDurationSec: { type: integer, minimum: 1 }
+        mediaUrl:           { type: [string, "null"], format: uri }
+        thumbnailUrl:       { type: [string, "null"], format: uri }
+        createdAt:          { type: string, format: date-time }
+        updatedAt:          { type: string, format: date-time }
+
+    Routine:
+      type: object
+      required:
+        - id
+        - slug
+        - title
+        - goal
+        - level
+        - totalDurationSec
+        - isPremium
+        - isAiGenerated
+        - createdAt
+        - updatedAt
+      properties:
+        id:               { type: string, format: uuid }
+        slug:             { type: string }
+        title:            { type: string }
+        description:      { type: [string, "null"] }
+        goal:             { $ref: "#/components/schemas/Goal" }
+        level:            { $ref: "#/components/schemas/Intensity" }
+        totalDurationSec: { type: integer, minimum: 1 }
+        isPremium:        { type: boolean }
+        isAiGenerated:    { type: boolean }
+        ownerId:          { type: [string, "null"], format: uuid }
+        createdAt:        { type: string, format: date-time }
+        updatedAt:        { type: string, format: date-time }
+
+    CreateRoutine:
+      description: Routine minus server-generated fields
+      type: object
+      required: [slug, title, goal, level, totalDurationSec, isPremium, isAiGenerated]
+      properties:
+        slug:             { type: string }
+        title:            { type: string }
+        description:      { type: [string, "null"] }
+        goal:             { $ref: "#/components/schemas/Goal" }
+        level:            { $ref: "#/components/schemas/Intensity" }
+        totalDurationSec: { type: integer, minimum: 1 }
+        isPremium:        { type: boolean }
+        isAiGenerated:    { type: boolean }
+        ownerId:          { type: [string, "null"], format: uuid }
+
+    RoutineStretchEntry:
+      type: object
+      required: [id, routineId, stretchId, orderIndex, durationSec, stretch]
+      properties:
+        id:          { type: string, format: uuid }
+        routineId:   { type: string, format: uuid }
+        stretchId:   { type: string, format: uuid }
+        orderIndex:  { type: integer, minimum: 0 }
+        durationSec: { type: integer, minimum: 1 }
+        sideFirst:   { type: [string, "null"] }
+        stretch:     { $ref: "#/components/schemas/Stretch" }
+
+    RoutineWithStretches:
+      allOf:
+        - $ref: "#/components/schemas/Routine"
+        - type: object
+          required: [routineStretches]
+          properties:
+            routineStretches:
+              type: array
+              items: { $ref: "#/components/schemas/RoutineStretchEntry" }
+
+    StartSession:
+      type: object
+      required: [userId, routineId]
+      properties:
+        userId:    { type: string, format: uuid, description: "Phase 3: removed, read from session instead" }
+        routineId: { type: string, format: uuid }
+
+    UpdateSession:
+      type: object
+      properties:
+        durationDoneSec:   { type: integer, minimum: 0 }
+        completionPct:     { type: number, minimum: 0, maximum: 100 }
+        skippedStretchIds: { type: array, items: { type: string, format: uuid } }
+        painFeedback:
+          type: object
+          additionalProperties: { type: integer, minimum: 0, maximum: 10 }
+        completed:         { type: boolean }
+
+    Session:
+      type: object
+      required:
+        - id
+        - userId
+        - startedAt
+        - durationDoneSec
+        - completionPct
+        - skippedStretchIds
+        - painFeedback
+        - createdAt
+      properties:
+        id:                { type: string, format: uuid }
+        userId:            { type: string, format: uuid }
+        routineId:         { type: [string, "null"], format: uuid }
+        startedAt:         { type: string, format: date-time }
+        completedAt:       { type: [string, "null"], format: date-time }
+        durationDoneSec:   { type: integer, minimum: 0 }
+        completionPct:     { type: number, minimum: 0, maximum: 100 }
+        skippedStretchIds: { type: array, items: { type: string, format: uuid } }
+        painFeedback:
+          type: object
+          additionalProperties: { type: integer, minimum: 0, maximum: 10 }
+        createdAt:         { type: string, format: date-time }
+
+    Progress:
+      type: object
+      required:
+        - currentStreak
+        - longestStreak
+        - totalSessions
+        - totalMinutes
+        - thisWeekMinutes
+        - thisMonthMinutes
+        - avgCompletionPct
+        - activeDays
+        - history
+      properties:
+        currentStreak:     { type: integer, minimum: 0 }
+        longestStreak:     { type: integer, minimum: 0 }
+        totalSessions:     { type: integer, minimum: 0 }
+        totalMinutes:      { type: integer, minimum: 0 }
+        thisWeekMinutes:   { type: integer, minimum: 0 }
+        thisMonthMinutes:  { type: integer, minimum: 0 }
+        avgCompletionPct:  { type: number, minimum: 0, maximum: 100 }
+        activeDays:        { type: array, items: { type: string } }
+        history:
+          type: array
+          items:
+            type: object
+            required: [date, minutesStretched, sessionsCompleted, completionPct]
+            properties:
+              date:              { type: string, description: "ISO date (YYYY-MM-DD)" }
+              minutesStretched:  { type: integer, minimum: 0 }
+              sessionsCompleted: { type: integer, minimum: 0 }
+              completionPct:     { type: number, minimum: 0, maximum: 100 }
